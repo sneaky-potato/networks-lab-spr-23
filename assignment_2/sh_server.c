@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <ctype.h>
 
 // #########################################
 // ## Ashwani Kumar Kamal (20CS10011)     ##
@@ -18,6 +19,7 @@ const unsigned PORT = 20001;
 const unsigned BUF_SIZE = 50;
 const unsigned USERNAME_SIZE = 25;
 
+char *trimwhitespace(char *);
 void send_results(int, char *, int);
 
 int main()
@@ -70,6 +72,7 @@ int main()
 			close(sockfd);
 
 			strcpy(buf, "LOGIN:");
+			buf[strlen(buf)] = '\0';
 			send(newsockfd, buf, strlen(buf) + 1, 0);
 
 			recv(newsockfd, buf, BUF_SIZE, 0);
@@ -123,7 +126,7 @@ int main()
 				}
 				else if (buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' ')
 				{
-					char *dir = &buf[3];
+					char *dir = trimwhitespace(&buf[3]);
 
 					if (chdir(dir) != 0)
 					{
@@ -137,8 +140,9 @@ int main()
 				// strcat(result, result);
 				// result = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz";
 				// printf("%s\n", result);
+				send(newsockfd, result, BUF_SIZE - 1, 0);
 
-				send_results(newsockfd, result, BUF_SIZE - 1);
+				// send_results(newsockfd, result, BUF_SIZE - 1);
 			}
 
 			// close connection
@@ -149,6 +153,25 @@ int main()
 		close(newsockfd);
 	}
 	return 0;
+}
+
+char *trimwhitespace(char *str)
+{
+	char *end;
+	while (isspace((unsigned char)*str))
+		str++;
+
+	if (*str == 0) // All spaces?
+		return str;
+
+	// Trim trailing space
+	end = str + strlen(str) - 1;
+	while (end > str && isspace((unsigned char)*end))
+		end--;
+
+	// Write new null terminator character
+	end[1] = '\0';
+	return str;
 }
 
 void send_results(int sockfd, char *to_send, int buf_size)
