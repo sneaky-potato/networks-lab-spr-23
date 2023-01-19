@@ -14,7 +14,7 @@
 // #########################################
 // # GCC version: gcc (GCC) 12.1.1 20220730
 
-const unsigned PORT = 20001;
+const unsigned PORT = 20000;
 const unsigned BUF_SIZE = 50;
 const unsigned USERNAME_SIZE = 25;
 const unsigned LOCAL_BUF_SIZE = 500;
@@ -27,15 +27,10 @@ int main()
     int sockfd;
     struct sockaddr_in serv_addr;
 
-    char *buf;
-    char *result;
     char *local_buf = (char *)malloc(sizeof(char) * LOCAL_BUF_SIZE);
 
     // 1 byte extra for null string
-    buf = (char *)malloc(sizeof(char) * (BUF_SIZE + 1));
-
-    // Recieving result string
-    result = (char *)malloc(sizeof(char) * 100);
+    char *buf = (char *)malloc(sizeof(char) * (BUF_SIZE + 1));
 
     // Server specification
     serv_addr.sin_family = AF_INET;
@@ -97,13 +92,13 @@ int main()
         // send command
         send(sockfd, buf, strlen(buf) + 1, 0);
 
+        // recv results in batches of size BUF_SIZE
         recv_str(sockfd, local_buf, buf, BUF_SIZE);
 
         if (strcmp(local_buf, "$$$$") == 0)
-            buf = "Invalid command";
-
+            local_buf = "Invalid command";
         else if (strcmp(local_buf, "####") == 0)
-            buf = "Error in running command";
+            local_buf = "Error in running command";
 
         printf("%s\n", local_buf);
         printf("$");
@@ -134,13 +129,15 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size)
 {
     int t;
     local_buf[0] = '\0';
-    while ((t = recv(sockfd, buf, buf_size, 0)) >= 0)
+    while ((t = recv(sockfd, buf, buf_size, 0)) > 0)
     {
         int i;
         for (i = 0; i < t; i++)
         {
             if (buf[i] == '\0')
+            {
                 break;
+            }
         }
         if (i < t)
         {

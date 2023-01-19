@@ -7,6 +7,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <ctype.h>
+#include <sys/types.h>
+#include <dirent.h>
 
 // #########################################
 // ## Ashwani Kumar Kamal (20CS10011)     ##
@@ -15,12 +17,14 @@
 // #########################################
 // # GCC version: gcc (GCC) 12.1.1 20220730
 
-const unsigned PORT = 20001;
+const unsigned PORT = 20000;
 const unsigned BUF_SIZE = 50;
+const unsigned LOCAL_BUF_SIZE = 500;
 const unsigned USERNAME_SIZE = 25;
 
 char *trimwhitespace(char *);
-void send_results(int, char *, int);
+void send_results(int, char *, char *, int);
+void recv_str(int, char *, char *, int);
 
 int main()
 {
@@ -28,7 +32,10 @@ int main()
 	int clilen;
 	struct sockaddr_in cli_addr, serv_addr;
 
-	char *buf = (char *)malloc(sizeof(char) * BUF_SIZE);
+	// 1 byte extra for null string
+	char *buf = (char *)malloc(sizeof(char) * (BUF_SIZE + 1));
+
+	char *local_buf = (char *)malloc(sizeof(char) * LOCAL_BUF_SIZE);
 
 	// Create socket
 	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
@@ -72,13 +79,13 @@ int main()
 			close(sockfd);
 
 			strcpy(buf, "LOGIN:");
-			buf[strlen(buf)] = '\0';
+			// buf[strlen(f)] = '\0';
 			send(newsockfd, buf, strlen(buf) + 1, 0);
 
-			recv(newsockfd, buf, BUF_SIZE, 0);
+			recv_str(newsockfd, local_buf, buf, BUF_SIZE);
 
 			char username_recvd[USERNAME_SIZE];
-			strcpy(username_recvd, buf);
+			strcpy(username_recvd, local_buf);
 
 			char *filename = "users.txt";
 			FILE *fp = fopen(filename, "r");
@@ -111,38 +118,57 @@ int main()
 			send(newsockfd, buf, strlen(buf) + 1, 0);
 
 			// recieve commands
-			while (recv(newsockfd, buf, BUF_SIZE, 0) > 0)
+			while (1)
 			{
-				char *result = (char *)malloc(sizeof(char) * 256);
+				recv_str(newsockfd, local_buf, buf, BUF_SIZE);
+				char *result = (char *)malloc(sizeof(char) * LOCAL_BUF_SIZE);
 
-				if (strcmp(buf, "pwd") == 0)
+				if (strcmp(local_buf, "pwd") == 0)
 				{
-					if (getcwd(result, 256) == NULL)
+					if (getcwd(result, LOCAL_BUF_SIZE) == NULL)
 					{
 						result = "####";
 					}
 
 					printf("%s\n", result);
 				}
-				else if (buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' ')
+				else if (local_buf[0] == 'c' && local_buf[1] == 'd' && local_buf[2] == ' ')
 				{
-					char *dir = trimwhitespace(&buf[3]);
+					char *dir = trimwhitespace(&local_buf[3]);
 
 					if (chdir(dir) != 0)
 					{
 						result = "####";
 					}
+					else
+						result = dir;
+				}
+				else if (strcmp(local_buf, "dir") == 0)
+				{
+					result[0] = '\0';
+					DIR *dirp;
+					struct dirent *dir_desc;
+
+					if ((dirp = opendir(".")) == NULL)
+					{
+						result = "####";
+					}
+
+					while ((dir_desc = readdir(dirp)) != NULL)
+					{
+						strcat(result, dir_desc->d_name);
+						strcat(result, "\n");
+					}
+
+					closedir(dirp);
 				}
 				else
 				{
 					result = "$$$$";
 				}
-				// strcat(result, result);
-				// result = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz";
-				// printf("%s\n", result);
-				send(newsockfd, result, BUF_SIZE - 1, 0);
 
-				// send_results(newsockfd, result, BUF_SIZE - 1);
+				// send result in batches
+				send_results(newsockfd, result, buf, BUF_SIZE);
 			}
 
 			// close connection
@@ -174,12 +200,34 @@ char *trimwhitespace(char *str)
 	return str;
 }
 
-void send_results(int sockfd, char *to_send, int buf_size)
+void recv_str(int sockfd, char *local_buf, char *buf, int buf_size)
+{
+	int t;
+	local_buf[0] = '\0';
+	while ((t = recv(sockfd, buf, buf_size, 0)) > 0)
+	{
+		int i;
+		for (i = 0; i < t; i++)
+		{
+			if (buf[i] == '\0')
+				break;
+		}
+		if (i < t)
+		{
+			strcat(local_buf, buf);
+			break;
+		}
+		buf[buf_size] = '\0';
+		strcat(local_buf, buf);
+	}
+}
+
+void send_results(int sockfd, char *to_send, char *buf, int buf_size)
 {
 	int n = strlen(to_send);
-	int send_n = (n + buf_size - 1) / buf_size;
+	// (n + 1) for accountig for null character of to_send
+	int send_n = ((n + 1) + buf_size - 1) / buf_size;
 
-	char *buf = (char *)malloc(sizeof(char) * (buf_size + 1));
 	int r = 0;
 
 	for (int i = 0; i < send_n; i++)
@@ -190,14 +238,12 @@ void send_results(int sockfd, char *to_send, int buf_size)
 
 		for (j = 0; j < buf_size; j++)
 		{
-			if (r < n)
+			if (r <= n)
+			{
+				// copy till null character
 				buf[j] = to_send[r++];
+			}
 		}
-		buf[j] = '\0';
-		int t = send(sockfd, buf, strlen(buf), 0);
-		printf("to send=%s %d\n", buf, t);
+		int t = send(sockfd, buf, (strlen(buf) + 1 > BUF_SIZE ? BUF_SIZE : strlen(buf) + 1), 0);
 	}
-	buf[0] = '\0';
-	int t = send(sockfd, buf, 1, 0);
-	printf("to send=%s %d\n", buf, t);
 }
