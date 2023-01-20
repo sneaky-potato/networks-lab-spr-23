@@ -99,9 +99,15 @@ int main()
 
         // err cases
         if (strcmp(local_buf, "$$$$") == 0)
-            local_buf = "Invalid command";
+        {
+            printf("Invalid command\n$");
+            continue;
+        }
         else if (strcmp(local_buf, "####") == 0)
-            local_buf = "Error in running command";
+        {
+            printf("Error in running command\n$");
+            continue;
+        }
 
         // print results of recv
         printf("%s\n", local_buf);
@@ -132,7 +138,9 @@ void recv_print(int sockfd, char *buf, int buf_size)
 void recv_str(int sockfd, char *local_buf, char *buf, int buf_size)
 {
     int t;
-    local_buf[0] = '\0';
+    // local_buf[0] = '\0';
+    for (int i = 0; i < LOCAL_BUF_SIZE; i++)
+        local_buf[i] = '\0';
     while ((t = recv(sockfd, buf, buf_size, 0)) > 0)
     {
         int i;
