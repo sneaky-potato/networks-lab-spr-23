@@ -16,6 +16,7 @@
 // # GCC version: gcc (GCC) 12.1.1 20220730
 
 int PORT = 20000;
+const unsigned BUF_SIZE = 50;
 
 int main()
 {
@@ -54,21 +55,22 @@ int main()
         int poll_result;
         int bytes_recvd;
         socklen_t servlen;
-
+        // start polling
         if ((poll_result = poll(poll_set, 1, 3000)) < 0)
         {
             perror("poll error");
             exit(EXIT_FAILURE);
         }
-
+        // poll ended with a timeout
         if (poll_result == 0)
         {
             continue;
         }
-
+        // poll revents returned POLLIN
         if (poll_set[0].revents & POLLIN)
         {
-            bytes_recvd = recvfrom(sockfd, (char *)buffer, 100, 0, (struct sockaddr *)&serv_addr, &servlen);
+            // recv result
+            bytes_recvd = recvfrom(sockfd, (char *)buffer, BUF_SIZE, 0, (struct sockaddr *)&serv_addr, &servlen);
 
             if (bytes_recvd < 0)
             {
@@ -82,6 +84,7 @@ int main()
             break;
         }
     }
+    // maximum attempts used
     if (attempts == 5)
         printf("Timeout exceeded\n");
 
