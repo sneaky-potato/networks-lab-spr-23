@@ -22,8 +22,11 @@ const unsigned BUF_SIZE = 50;
 const unsigned LOCAL_BUF_SIZE = 500;
 const unsigned USERNAME_SIZE = 25;
 
+// trim leading whitespaces function prototype
 char *trimwhitespace(char *);
+// send results in batches function prototype
 void send_results(int, char *, char *, int);
+// recv and store string function prototype
 void recv_str(int, char *, char *, int);
 
 int main()
@@ -35,6 +38,7 @@ int main()
 	// 1 byte extra for null string
 	char *buf = (char *)malloc(sizeof(char) * (BUF_SIZE + 1));
 
+	// local buf for recv and storing successively
 	char *local_buf = (char *)malloc(sizeof(char) * LOCAL_BUF_SIZE);
 
 	// Create socket
@@ -78,10 +82,11 @@ int main()
 			// close old socket
 			close(sockfd);
 
+			// send login prompt
 			strcpy(buf, "LOGIN:");
-			// buf[strlen(f)] = '\0';
 			send(newsockfd, buf, strlen(buf) + 1, 0);
 
+			// recv username
 			recv_str(newsockfd, local_buf, buf, BUF_SIZE);
 
 			char username_recvd[USERNAME_SIZE];
@@ -121,8 +126,11 @@ int main()
 			while (1)
 			{
 				recv_str(newsockfd, local_buf, buf, BUF_SIZE);
+
+				// for sending results back to client
 				char *result = (char *)malloc(sizeof(char) * LOCAL_BUF_SIZE);
 
+				// pwd command
 				if (strcmp(local_buf, "pwd") == 0)
 				{
 					if (getcwd(result, LOCAL_BUF_SIZE) == NULL)
@@ -132,10 +140,18 @@ int main()
 
 					printf("%s\n", result);
 				}
-				else if (local_buf[0] == 'c' && local_buf[1] == 'd' && local_buf[2] == ' ')
+				// cd command
+				else if ((strlen(local_buf) == 2 && local_buf[0] == 'c' && local_buf[1] == 'd') || (strlen(local_buf) > 2 && local_buf[2] == ' '))
 				{
-					char *dir = trimwhitespace(&local_buf[3]);
-
+					char *dir;
+					if (strlen(local_buf) == 2)
+						dir = ".";
+					else
+					{
+						dir = trimwhitespace(&local_buf[3]);
+						if (strlen(dir) == 0)
+							dir = ".";
+					}
 					if (chdir(dir) != 0)
 					{
 						result = "####";
@@ -143,6 +159,7 @@ int main()
 					else
 						result = dir;
 				}
+				// dir command
 				else if (strcmp(local_buf, "dir") == 0)
 				{
 					result[0] = '\0';
@@ -162,6 +179,7 @@ int main()
 
 					closedir(dirp);
 				}
+				// invalid command
 				else
 				{
 					result = "$$$$";
@@ -226,6 +244,7 @@ void send_results(int sockfd, char *to_send, char *buf, int buf_size)
 {
 	int n = strlen(to_send);
 	// (n + 1) for accountig for null character of to_send
+	// number of send calls to send data completely (ceil ((n+1) / buf_size))
 	int send_n = ((n + 1) + buf_size - 1) / buf_size;
 
 	int r = 0;

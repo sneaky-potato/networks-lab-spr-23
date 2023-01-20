@@ -19,7 +19,9 @@ const unsigned BUF_SIZE = 50;
 const unsigned USERNAME_SIZE = 25;
 const unsigned LOCAL_BUF_SIZE = 500;
 
+// recv and print function prototype
 void recv_print(int, char *, int);
+// recv and store string function prototype
 void recv_str(int, char *, char *, int);
 
 int main()
@@ -37,9 +39,6 @@ int main()
     inet_aton("127.0.0.1", &serv_addr.sin_addr);
     serv_addr.sin_port = htons(PORT);
 
-    for (int i = 0; i < 6; i++)
-        buf[i] = '\0';
-
     // Create socket
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     {
@@ -54,7 +53,7 @@ int main()
         exit(0);
     }
 
-    // Recieve result
+    // Recieve result and print
     recv_print(sockfd, buf, BUF_SIZE);
 
     char username[USERNAME_SIZE];
@@ -79,13 +78,16 @@ int main()
         exit(EXIT_FAILURE);
     }
 
+    // shell prompt on successful authentication
     printf("$");
 
     while (fgets(buf, BUF_SIZE, stdin))
     {
+        // exit command
         if (strcmp(buf, "exit\n") == 0)
             exit(0);
 
+        // trim trailing newline
         if (strlen(buf) > 0 && buf[strlen(buf) - 1] == '\n')
             buf[strlen(buf) - 1] = '\0';
 
@@ -95,11 +97,13 @@ int main()
         // recv results in batches of size BUF_SIZE
         recv_str(sockfd, local_buf, buf, BUF_SIZE);
 
+        // err cases
         if (strcmp(local_buf, "$$$$") == 0)
             local_buf = "Invalid command";
         else if (strcmp(local_buf, "####") == 0)
             local_buf = "Error in running command";
 
+        // print results of recv
         printf("%s\n", local_buf);
         printf("$");
     }
@@ -134,6 +138,7 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size)
         int i;
         for (i = 0; i < t; i++)
         {
+            // if a null is found in current recv string
             if (buf[i] == '\0')
             {
                 break;
@@ -141,9 +146,11 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size)
         }
         if (i < t)
         {
+            // null was found, so concatenate and break
             strcat(local_buf, buf);
             break;
         }
+        // null was not found, add null and concatenate
         buf[buf_size] = '\0';
         strcat(local_buf, buf);
     }
