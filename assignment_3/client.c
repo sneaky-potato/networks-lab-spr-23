@@ -18,6 +18,7 @@ const unsigned PORT = 3000;
 const unsigned BUF_SIZE = 50;
 const unsigned LOCAL_BUF_SIZE = 500;
 
+// recv and store string function prototype
 void recv_str(int, char *, char *, int);
 
 int main()
@@ -25,7 +26,6 @@ int main()
     int sockfd;
     struct sockaddr_in serv_addr;
 
-    int i;
     char *local_buf = (char *)malloc(sizeof(char) * LOCAL_BUF_SIZE);
     // 1 byte extra for null string
     char *buf = (char *)malloc(sizeof(char) * (BUF_SIZE + 1));
@@ -66,9 +66,11 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size)
 {
     int t;
     local_buf[0] = '\0';
+    // while there is something to recv
     while ((t = recv(sockfd, buf, buf_size, 0)) > 0)
     {
         int i;
+        // check for null character
         for (i = 0; i < t; i++)
         {
             if (buf[i] == '\0')
@@ -76,9 +78,11 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size)
         }
         if (i < t)
         {
+            // null found
             strcat(local_buf, buf);
             break;
         }
+        // no null found, add null
         buf[buf_size] = '\0';
         strcat(local_buf, buf);
     }

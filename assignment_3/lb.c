@@ -46,9 +46,15 @@ int main(int argc, char const *argv[])
     time_t start, end;
     int server_a_load, server_b_load;
 
+    // sockfd for lb welcoming socket
+    // newsockfd for new connecting client
+    // servesockfd for connecting to server
+
     int sockfd, newsockfd;
     int servesockfd;
     int clilen;
+
+    // sockaddr_in for all entities involved (sa, sb, lb, cli)
     struct sockaddr_in cli_addr, lb_addr;
     struct sockaddr_in sa_addr, sb_addr;
 
@@ -159,11 +165,12 @@ int main(int argc, char const *argv[])
             // poll ended with a timeout
             if (poll_result == 0)
             {
-                printf("No clients. Collecting loads\n");
+                printf("Collecting loads\n");
                 break;
             }
 
             clilen = sizeof(cli_addr);
+            // New client connected
             newsockfd = accept(sockfd, (struct sockaddr *)&cli_addr, &clilen);
 
             if (newsockfd < 0)
@@ -172,11 +179,13 @@ int main(int argc, char const *argv[])
                 exit(0);
             }
 
+            // fork for concurrent behaviour
             if (fork() == 0)
             {
                 // close old socket
                 close(sockfd);
 
+                // prepare to connect to one of the servers
                 if ((servesockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
                 {
                     printf("Cannot create server socket\n");
@@ -191,7 +200,7 @@ int main(int argc, char const *argv[])
                         perror("Unable to connect to server A\n");
                         exit(0);
                     }
-                    printf("\nSending client request to %s:%d\n", inet_ntoa(sa_addr.sin_addr), porta);
+                    printf("Sending client request to %s:%d\n\n", inet_ntoa(sa_addr.sin_addr), porta);
                 }
                 else
                 {
@@ -201,7 +210,7 @@ int main(int argc, char const *argv[])
                         perror("Unable to connect to server B\n");
                         exit(0);
                     }
-                    printf("\nSending client request to %s:%d\n", inet_ntoa(sb_addr.sin_addr), portb);
+                    printf("Sending client request to %s:%d\n\n", inet_ntoa(sb_addr.sin_addr), portb);
                 }
                 strcpy(buf, "Send Time");
                 // Send time request to server (whichever got connected)
@@ -228,9 +237,11 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size)
 {
     int t;
     local_buf[0] = '\0';
+    // while there is something to recv
     while ((t = recv(sockfd, buf, buf_size, 0)) > 0)
     {
         int i;
+        // check for null character
         for (i = 0; i < t; i++)
         {
             if (buf[i] == '\0')
@@ -238,9 +249,11 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size)
         }
         if (i < t)
         {
+            // null found
             strcat(local_buf, buf);
             break;
         }
+        // no null found, add null
         buf[buf_size] = '\0';
         strcat(local_buf, buf);
     }

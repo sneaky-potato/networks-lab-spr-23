@@ -9,6 +9,8 @@ Repository for the Networks Laboratory course (CS39006) offered in Spring semest
 Assignment solutions along with problem statement can be found here-
 
 - [assignment_1](/assignment_1/README.md)
+- [assignment_2](/assignment_2/README.md)
+- [assignment_3](/assignment_3/README.md)
 
 ## Disclaimer
 

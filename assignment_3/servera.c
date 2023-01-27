@@ -20,6 +20,7 @@ const unsigned LOCAL_BUF_SIZE = 500;
 const unsigned LOAD_UPPER = 100;
 const unsigned LOAD_LOWER = 1;
 
+// recv and store string function prototype
 void recv_str(int, char *, char *, int);
 
 int main(int argc, char const *argv[])
@@ -35,7 +36,7 @@ int main(int argc, char const *argv[])
     int clilen;
     struct sockaddr_in cli_addr, serv_addr;
 
-    int i;
+    // seed for random function
     srand((unsigned)PORT);
 
     // 1 byte extra for null string
@@ -114,9 +115,11 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size)
 {
     int t;
     local_buf[0] = '\0';
+    // while there is something to recv
     while ((t = recv(sockfd, buf, buf_size, 0)) > 0)
     {
         int i;
+        // check for null character
         for (i = 0; i < t; i++)
         {
             if (buf[i] == '\0')
@@ -124,9 +127,11 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size)
         }
         if (i < t)
         {
+            // null found
             strcat(local_buf, buf);
             break;
         }
+        // no null found, add null
         buf[buf_size] = '\0';
         strcat(local_buf, buf);
     }
