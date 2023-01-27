@@ -66,7 +66,7 @@ int main(int argc, char const *argv[])
 
     listen(sockfd, 5);
 
-    printf("Server B running on port: %d\nWaiting for incoming connections...\n", PORT);
+    printf("Server running on port: %d\nWaiting for incoming connections...\n", PORT);
 
     while (1)
     {
