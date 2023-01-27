@@ -11,7 +11,7 @@
 // #########################################
 // ## Ashwani Kumar Kamal (20CS10011)     ##
 // ## Networks Laboratory                 ##
-// ## Assignment - 1                      ##
+// ## Assignment - 3                      ##
 // #########################################
 // # GCC version: gcc (GCC) 12.1.1 20220730
 
@@ -36,6 +36,7 @@ int main(int argc, char const *argv[])
     struct sockaddr_in cli_addr, serv_addr;
 
     int i;
+    srand((unsigned)PORT);
 
     // 1 byte extra for null string
     char *buf = (char *)malloc(sizeof(char) * (BUF_SIZE + 1));
@@ -80,13 +81,17 @@ int main(int argc, char const *argv[])
         // recv results
         recv_str(newsockfd, local_buf, buf, BUF_SIZE);
 
-        if (strcpy(local_buf, "Send Load") == 0)
+        if (strcmp(local_buf, "Send Load") == 0)
         {
+            // printf("Sending \n");
             int load = (rand() % (LOAD_UPPER - LOAD_LOWER + 1)) + LOAD_LOWER;
-            send(newsockfd, load, sizeof(load), 0);
+
+            send(newsockfd, &load, sizeof(load), 0);
+            printf("Load sent: %d\n", load);
         }
-        else if (strcpy(local_buf, "Send Time") == 0)
+        else if (strcmp(local_buf, "Send Time") == 0)
         {
+            // printf("Sending time\n");
             time_t t = time(NULL);
             struct tm *tm = localtime(&t);
 
@@ -94,6 +99,10 @@ int main(int argc, char const *argv[])
             strcpy(buf, asctime(tm));
             // Send date time information
             send(newsockfd, buf, strlen(buf) + 1, 0);
+        }
+        else
+        {
+            printf("Something went wrong\n");
         }
 
         close(newsockfd);

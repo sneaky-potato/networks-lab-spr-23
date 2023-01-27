@@ -10,11 +10,11 @@
 // #########################################
 // ## Ashwani Kumar Kamal (20CS10011)     ##
 // ## Networks Laboratory                 ##
-// ## Assignment - 1                      ##
+// ## Assignment - 3                      ##
 // #########################################
 // # GCC version: gcc (GCC) 12.1.1 20220730
 
-const unsigned PORT = 20001;
+const unsigned PORT = 3000;
 const unsigned BUF_SIZE = 50;
 const unsigned LOCAL_BUF_SIZE = 500;
 
@@ -56,18 +56,7 @@ int main()
     printf("Send Time\n");
     // Recieve date time information
     recv_str(sockfd, local_buf, buf, BUF_SIZE);
-    printf("recv = %s\n", local_buf);
-
-    // strcpy(buf, "Send Load");
-
-    // // Send time request string
-    // send(sockfd, buf, strlen(buf) + 1, 0);
-    // printf("Send Load\n");
-    // // Recieve date time information
-    // int load;
-    // recv(sockfd, &load, sizeof(load), 0);
-    // // recv_str(sockfd, , buf, BUF_SIZE);
-    // printf("recv = %d\n", load);
+    printf("%s\n", local_buf);
 
     close(sockfd);
     return 0;

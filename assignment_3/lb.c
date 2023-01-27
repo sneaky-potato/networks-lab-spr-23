@@ -9,11 +9,13 @@
 #include <ctype.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <poll.h>
+#include <time.h>
 
 // #########################################
 // ## Ashwani Kumar Kamal (20CS10011)     ##
 // ## Networks Laboratory                 ##
-// ## Assignment - 2                      ##
+// ## Assignment - 3                      ##
 // #########################################
 // # GCC version: gcc (GCC) 12.1.1 20220730
 
@@ -38,9 +40,17 @@ int main(int argc, char const *argv[])
     int porta = atoi(argv[2]);
     int portb = atoi(argv[3]);
 
+    struct pollfd poll_set[1];
+    int poll_result;
+
+    time_t start, end;
+    int server_a_load, server_b_load;
+
     int sockfd, newsockfd;
+    int servesockfd;
     int clilen;
     struct sockaddr_in cli_addr, lb_addr;
+    struct sockaddr_in sa_addr, sb_addr;
 
     // 1 byte extra for null string
     char *buf = (char *)malloc(sizeof(char) * (BUF_SIZE + 1));
@@ -55,7 +65,7 @@ int main(int argc, char const *argv[])
         exit(0);
     }
 
-    // Server specification
+    // Load balancer specification
     lb_addr.sin_family = AF_INET;
     lb_addr.sin_addr.s_addr = INADDR_ANY;
     lb_addr.sin_port = htons(PORT);
@@ -69,38 +79,147 @@ int main(int argc, char const *argv[])
 
     listen(sockfd, 5);
 
+    // Server A specification
+    sa_addr.sin_family = AF_INET;
+    sa_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    sa_addr.sin_port = htons(porta);
+
+    // Server B specification
+    sb_addr.sin_family = AF_INET;
+    sb_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    sb_addr.sin_port = htons(portb);
+
+    poll_set->fd = sockfd;
+    poll_set->events = POLLIN;
+
     printf("Load balancer running on port: %d\nWaiting for incoming connections...\n", PORT);
 
     while (1)
     {
-        // Accept connection fromm client
-        clilen = sizeof(cli_addr);
-        newsockfd = accept(sockfd, (struct sockaddr *)&cli_addr, &clilen);
-
-        if (newsockfd < 0)
+        if ((servesockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
         {
-            printf("Accept error\n");
+            printf("Cannot create server socket\n");
             exit(0);
         }
-
-        // Fork server process
-        if (fork() == 0)
+        // Connection request to server A
+        if ((connect(servesockfd, (struct sockaddr *)&sa_addr, sizeof(sa_addr))) < 0)
         {
-            // close old socket
-            close(sockfd);
+            perror("Unable to connect to server A\n");
+            exit(0);
+        }
+        strcpy(buf, "Send Load");
 
-            // send login prompt
-            strcpy(buf, "LOGIN:");
-            send(newsockfd, buf, strlen(buf) + 1, 0);
+        send(servesockfd, buf, strlen(buf) + 1, 0);
+        // Recieve load from server A
+        recv(servesockfd, &server_a_load, sizeof(server_a_load), 0);
 
-            // recv username
-            recv_str(newsockfd, local_buf, buf, BUF_SIZE);
+        printf("Load received from %s:%d = %d\n", inet_ntoa(sa_addr.sin_addr), porta, server_a_load);
+        close(servesockfd);
 
+        if ((servesockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+        {
+            printf("Cannot create server socket\n");
+            exit(0);
+        }
+        // Connection request to server B
+        if ((connect(servesockfd, (struct sockaddr *)&sb_addr, sizeof(sb_addr))) < 0)
+        {
+            perror("Unable to connect to server B\n");
+            exit(0);
+        }
+        strcpy(buf, "Send Load");
+
+        send(servesockfd, buf, strlen(buf) + 1, 0);
+        // Recieve load from server B
+        recv(servesockfd, &server_b_load, sizeof(server_b_load), 0);
+
+        printf("Load received from %s:%d = %d\n", inet_ntoa(sb_addr.sin_addr), portb, server_b_load);
+        close(servesockfd);
+
+        // Get current time pointer
+        start = time(NULL);
+        end = start + 5;
+
+        // wait for 5 seconds for a client request
+        while (start < end)
+        {
+            // Get current remaining time from the 5 seconds
+            int diff = difftime(end, start) * 1000;
+            printf("Start of polling: %s\n", ctime(&start));
+
+            // update start time
+            start = time(NULL);
+
+            // Poll with the remaining time
+            if ((poll_result = poll(poll_set, 1, diff)) < 0)
+            {
+                perror("poll error");
+                break;
+            }
+            // poll ended with a timeout
+            if (poll_result == 0)
+            {
+                printf("No clients. Collecting loads\n");
+                break;
+            }
+
+            clilen = sizeof(cli_addr);
+            newsockfd = accept(sockfd, (struct sockaddr *)&cli_addr, &clilen);
+
+            if (newsockfd < 0)
+            {
+                perror("Accept error\n");
+                exit(0);
+            }
+
+            if (fork() == 0)
+            {
+                // close old socket
+                close(sockfd);
+
+                if ((servesockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+                {
+                    printf("Cannot create server socket\n");
+                    exit(0);
+                }
+
+                if (server_a_load < server_b_load)
+                {
+                    // Connection request to server A
+                    if (connect(servesockfd, (const struct sockaddr *)&sa_addr, sizeof(sa_addr)) < 0)
+                    {
+                        perror("Unable to connect to server A\n");
+                        exit(0);
+                    }
+                    printf("\nSending client request to %s:%d\n", inet_ntoa(sa_addr.sin_addr), porta);
+                }
+                else
+                {
+                    // Connection request to server B
+                    if (connect(servesockfd, (const struct sockaddr *)&sb_addr, sizeof(sb_addr)) < 0)
+                    {
+                        perror("Unable to connect to server B\n");
+                        exit(0);
+                    }
+                    printf("\nSending client request to %s:%d\n", inet_ntoa(sb_addr.sin_addr), portb);
+                }
+                strcpy(buf, "Send Time");
+                // Send time request to server (whichever got connected)
+                send(servesockfd, buf, strlen(buf) + 1, 0);
+
+                // Recieve time
+                recv_str(servesockfd, local_buf, buf, BUF_SIZE);
+
+                // Send time back to client in batches
+                send_results(newsockfd, local_buf, buf, BUF_SIZE);
+
+                // close connections
+                close(servesockfd);
+                close(newsockfd);
+                exit(0);
+            }
             close(newsockfd);
-            exit(0);
         }
-
-        close(newsockfd);
     }
     return 0;
 }
