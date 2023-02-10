@@ -1,12 +1,11 @@
 /* 
     CS39006 - Networks Laboratory, Spring Semester 2022-2023
     Assignment 4
-    Name: Kartik Pontula
-    Roll No: 20CS10031
+    Members: Ashwani Kumar Kamal (20CS10011), Kartik Pontula (20CS10031)
     Program Synopsis: Client-side socket program for HTTP requests
     Usage:
         gcc client.c -o cliexec
-        ./cliexec <lb-port>
+        ./cliexec
 */
 #include <stdio.h> 
 #include <stdlib.h> 
