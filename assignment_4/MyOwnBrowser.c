@@ -28,8 +28,9 @@ void showError(char *s)
     exit(EXIT_FAILURE);
 }
 
+char *getDate(time_t);
 char *getRequest(char *, int, char *, char *);
-char *getDate();
+char *putRequest(char *, int, char *, char *, int);
 
 int main()
 {
@@ -117,24 +118,26 @@ int main()
             memset(filetype, 0, 5);
             strcpy(filetype, tempfiletype);
             // printf("URL is %s\n", url);
-            printf("IP is %s\n", ip);
-            printf("port is %d\n", port);
-            printf("localpath is %s\n", localpath);
-            printf("filetype is %s\n", filetype);
+            // printf("IP is %s\n", ip);
+            // printf("port is %d\n", port);
+            // printf("localpath is %s\n", localpath);
+            // printf("filetype is %s\n", filetype);
             // connect to server
             memset(&servaddr, 0, sizeof(servaddr));
-            servaddr.sin_family = htons(AF_INET);
-            servaddr.sin_addr.s_addr = inet_addr(ip);
+
+            servaddr.sin_family = AF_INET;
+            inet_aton(ip, &servaddr.sin_addr);
             servaddr.sin_port = htons((short int)port);
-            // if (connect(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr)) == -1)
-            // {
-            //     printf("Server connection failure.\n");
-            //     continue;
-            // }
+
+            if (connect(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr)) == -1)
+            {
+                printf("Server connection failure.\n");
+                continue;
+            }
             // prepare request
             char *request = (char *)malloc(MAX_REQ_SIZE * sizeof(char));
             request = getRequest(ip, port, localpath, filetype);
-            printf("%s\n", request);
+            int t = send(sockfd, request, strlen(request) + 1, 0);
         }
         else if (strcmp(cmd, "PUT") == 0)
         {
@@ -247,7 +250,7 @@ char *getRequest(char *ip, int port, char *localpath, char *filetype)
 
     sprintf(
         request,
-        "GET %s HTTP/1.1\nHost: %s:%d\nConnection: close;\nDate: % s\nAccept: %s\nAccept-Language: %s\nIf-Modified-Since: %s\n",
+        "GET %s HTTP/1.1\nHost: %s:%d\nConnection: close\nDate: % s\nAccept: %s\nAccept-Language: %s\nIf-Modified-Since: %s\n",
         localpath,
         ip,
         port,
@@ -255,6 +258,36 @@ char *getRequest(char *ip, int port, char *localpath, char *filetype)
         accept,
         accept_lang,
         previous_two_date);
+
+    return request;
+}
+
+char *putRequest(char *ip, int port, char *localpath, char *filetype, int content_length)
+{
+    char *request = (char *)malloc(MAX_REQ_SIZE * sizeof(char));
+    char *date = getDate(time(NULL));
+    char *previous_two_date = getDate(time(NULL) - 2 * 24 * 60 * 60);
+
+    char *content_type = (char *)malloc(100 * sizeof(char));
+    content_type = "text/*";
+    if (!strcmp(filetype, "html"))
+        content_type = "text/html";
+    else if (!strcmp(filetype, "pdf"))
+        content_type = "application/pdf";
+    else if (!strcmp(filetype, "jpg"))
+        content_type = "image/jpeg";
+
+    char *content_lang = "en-us, en;q=0.9";
+
+    sprintf(
+        request,
+        "PUT %s HTTP/1.1\nHost: %s:%d\nConnection: close;\nDate: % s\nContent-type: %s\nContent-language: %s\n",
+        localpath,
+        ip,
+        port,
+        date,
+        content_type,
+        content_lang);
 
     return request;
 }
