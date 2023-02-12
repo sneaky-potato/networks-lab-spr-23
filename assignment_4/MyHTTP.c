@@ -21,10 +21,36 @@ const unsigned PORT = 20001;
 const unsigned BUF_SIZE = 50;
 const unsigned LOCAL_BUF_SIZE = 1024;
 
+typedef enum Method
+{
+    GET,
+    PUT,
+    UNSUPPORTED
+} Method;
+typedef struct Header
+{
+    char *name;
+    char *value;
+    struct Header *next;
+} Header;
+
+typedef struct Request
+{
+    enum Method method;
+    char *url;
+    char *version;
+    struct Header *headers;
+    char *body;
+} Request;
+
 // send results in batches function prototype
 void send_results(int, char *, char *, int);
 // recv and store string function prototype
 void recv_str(int, char *, char *, int);
+
+struct Request *parse_request(const char *raw);
+void free_header(struct Header *h);
+void free_request(struct Request *req);
 
 int main()
 {
@@ -115,29 +141,99 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size)
     }
 }
 
-void send_results(int sockfd, char *to_send, char *buf, int buf_size)
+struct Request *parse_request(const char *raw)
 {
-    int n = strlen(to_send);
-    // (n + 1) for accountig for null character of to_send
-    // number of send calls to send data completely (ceil ((n+1) / buf_size))
-    int send_n = ((n + 1) + buf_size - 1) / buf_size;
+    struct Request *req = (struct Request *)malloc(sizeof(struct Request));
+    memset(req, 0, sizeof(struct Request));
 
-    int r = 0;
+    // Method
+    size_t meth_len = strcspn(raw, " ");
+    if (memcmp(raw, "GET", strlen("GET")) == 0)
+        req->method = GET;
+    else if (memcmp(raw, "PUT", strlen("PUT")) == 0)
+        req->method = PUT;
+    else
+        req->method = UNSUPPORTED;
+    raw += meth_len + 1; // move past <SP>
 
-    for (int i = 0; i < send_n; i++)
+    // Request-URI
+    size_t url_len = strcspn(raw, " ");
+    req->url = (char *)malloc((url_len + 1) * sizeof(char));
+    memcpy(req->url, raw, url_len);
+    req->url[url_len] = '\0';
+    raw += url_len + 1; // move past <SP>
+
+    // HTTP-Version
+    size_t ver_len = strcspn(raw, "\r\n");
+    req->version = (char *)malloc((ver_len + 1) * sizeof(char));
+    memcpy(req->version, raw, ver_len);
+    req->version[ver_len] = '\0';
+    raw += ver_len + 2; // move past <CR><LF>
+
+    struct Header *header = NULL, *last = NULL;
+    while (raw[0] != '\r' || raw[1] != '\n')
     {
-        int j;
-        for (j = 0; j < buf_size; j++)
-            buf[j] = '\0';
+        last = header;
+        header = malloc(sizeof(Header));
 
-        for (j = 0; j < buf_size; j++)
+        // name
+        size_t name_len = strcspn(raw, ":");
+        header->name = malloc(name_len + 1);
+        memcpy(header->name, raw, name_len);
+        header->name[name_len] = '\0';
+        raw += name_len + 1; // move past :
+        while (*raw == ' ')
         {
-            if (r <= n)
-            {
-                // copy till null character
-                buf[j] = to_send[r++];
-            }
+            raw++;
         }
-        int t = send(sockfd, buf, (strlen(buf) + 1 > BUF_SIZE ? BUF_SIZE : strlen(buf) + 1), 0);
+
+        // value
+        size_t value_len = strcspn(raw, "\r\n");
+        header->value = malloc(value_len + 1);
+        if (!header->value)
+        {
+            free_request(req);
+            return NULL;
+        }
+        memcpy(header->value, raw, value_len);
+        header->value[value_len] = '\0';
+        raw += value_len + 2; // move past <CR><LF>
+
+        // next
+        header->next = last;
     }
+    req->headers = header;
+    raw += 2; // move past <CR><LF>
+
+    size_t body_len = strlen(raw);
+    req->body = malloc(body_len + 1);
+    if (!req->body)
+    {
+        free_request(req);
+        return NULL;
+    }
+    memcpy(req->body, raw, body_len);
+    req->body[body_len] = '\0';
+
+    return req;
+}
+
+void free_header(struct Header *h)
+{
+    if (h)
+    {
+        free(h->name);
+        free(h->value);
+        free_header(h->next);
+        free(h);
+    }
+}
+
+void free_request(struct Request *req)
+{
+    free(req->url);
+    free(req->version);
+    free_header(req->headers);
+    free(req->body);
+    free(req);
 }
