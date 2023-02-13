@@ -20,7 +20,7 @@
 
 #define MAX_REQ_SIZE 1024
 
-const unsigned PORT = 20000;
+const unsigned PORT = 20001;
 const unsigned BUF_SIZE = 50;
 const unsigned LOCAL_BUF_SIZE = 1024;
 
@@ -48,9 +48,9 @@ typedef struct Request
 } Request;
 
 // recv and store string function prototype
-void recv_str(int, char *, char *, int);
+void recv_str(int, char *, char *, int, int *, char *);
 char *getDate(time_t);
-struct Request *parse_request(const char *);
+struct Request *parse_request_headers(const char *);
 void free_header(struct Header *h);
 void free_request(struct Request *req);
 char *processGetRequest(struct Request *req, int sockfd, int *status);
@@ -111,25 +111,20 @@ int main()
             close(sockfd);
 
             // recv http request
-            recv_str(newsockfd, local_buf, buf, BUF_SIZE);
-            printf("HTTP request:\n%s", local_buf);
-            struct Request *req = parse_request(local_buf);
-            if (req)
-            {
-                printf("Method: %d\n", req->method);
-                printf("Request-URI: %s\n", req->url);
-                printf("HTTP-Version: %s\n", req->version);
-                puts("Headers:");
-                struct Header *h;
-                for (h = req->headers; h; h = h->next)
-                    printf("%32s: %s\n", h->name, h->value);
-            }
+            int body_len = 0;
+            char *partial_body = (char *)malloc(sizeof(char) * BUF_SIZE);
+            recv_str(newsockfd, local_buf, buf, BUF_SIZE, &body_len, partial_body);
+
+            struct Request *req = parse_request_headers(local_buf);
             char *response = NULL;
             int status_code = 0;
             if (req->method == GET)
             {
                 response = processGetRequest(req, newsockfd, &status_code);
-                send(newsockfd, response, strlen(response), 0);
+                printf("prepped for sendign\n");
+                if (send(newsockfd, response, strlen(response) + 1, 0) == -1)
+                    printf("nhk\n");
+                printf("sent\n");
             }
             // else if (req->method == PUT)
             //     processPutRequest(req, newsockfd);
@@ -147,26 +142,43 @@ int main()
     return 0;
 }
 
-void recv_str(int sockfd, char *local_buf, char *buf, int buf_size)
+// recv until \r\n\r\n
+void recv_str(int sockfd, char *local_buf, char *buf, int buf_size, int *body_len, char *partial_body)
 {
+    // recv until one of recved packets contains \r\n\r\n
+    // store everything in Request struct
+    // printf("recv starts\n");
     int t;
-    local_buf[0] = '\0';
-    while ((t = recv(sockfd, buf, buf_size, 0)) > 0)
+    int found = 0;
+    int cnt = 0;
+    char pattern[] = {'\r', '\n', '\r', '\n'};
+    char *p;
+    int i;
+    while ((t = recv(sockfd, buf, BUF_SIZE, 0)) > 0)
     {
-        int i;
-        for (i = 0; i < t; i++)
+        memcpy(local_buf + cnt, buf, t);
+        printf(">%s\n", local_buf);
+        cnt += t;
+        printf("cnt: %d\n", cnt);
+        for (i = 0; i < cnt - 3; i++)
         {
-            if (buf[i] == '\0')
+            if (local_buf[i] == '\r' && local_buf[i + 1] == '\n' && local_buf[i + 2] == '\r' && local_buf[i + 3] == '\n')
+            {
+                found = 1;
+                p = local_buf + i;
                 break;
+            }
         }
-        if (i < t)
-        {
-            strcat(local_buf, buf);
-            return;
-        }
-        buf[buf_size] = '\0';
-        strcat(local_buf, buf);
+        if (found)
+            break;
     }
+    printf("recv ends\n");
+    if (found)
+    {
+        *body_len = cnt - i - 4;
+        memcpy(partial_body, p + 4, *body_len);
+    }
+    *(p + 4) = '\0';
 }
 
 char *getDate(time_t t)
@@ -177,7 +189,7 @@ char *getDate(time_t t)
     return s;
 }
 
-struct Request *parse_request(const char *raw)
+struct Request *parse_request_headers(const char *raw)
 {
     struct Request *req = (struct Request *)malloc(sizeof(struct Request));
     memset(req, 0, sizeof(struct Request));
@@ -233,13 +245,7 @@ struct Request *parse_request(const char *raw)
         // next
         header->next = last;
     }
-    req->headers = NULL;
-    // raw += 2; // move past <CR><LF>
-
-    // size_t body_len = strlen(raw);
-    // req->body = malloc(body_len + 1);
-    // memcpy(req->body, raw, body_len);
-    // req->body[body_len] = '\0';
+    req->headers = header;
 
     return req;
 }
