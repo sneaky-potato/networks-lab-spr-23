@@ -55,7 +55,7 @@ void free_header(struct Header *);
 void free_request(struct Request *);
 char *getHeader(struct Request *, char *);
 char *processGetRequest(struct Request *req, int sockfd, int *status);
-void processPutRequest(struct Request *req, int sockfd);
+char *processPutRequest(struct Request *req, int sockfd);
 void processUnsupportedRequest(struct Request *req, int sockfd);
 
 int main()
@@ -119,6 +119,7 @@ int main()
             struct Request *req = parse_request_headers(local_buf);
             char *response = NULL;
             int status_code = 0;
+
             if (req->method == GET)
             {
                 response = processGetRequest(req, newsockfd, &status_code);
@@ -136,12 +137,64 @@ int main()
                 }
                 fclose(fp);
             }
-            // else if (req->method == PUT)
-            //     processPutRequest(req, newsockfd);
-            // else
-            //     processUnsupportedRequest(req, newsockfd);
-            // free_request(req);
+            else if (req->method == PUT)
+            {
+                char *value = getHeader(req, "Content-Length");
+                if (!value)
+                {
+                    printf("No content length\n");
+                    close(newsockfd);
+                    continue;
+                }
+                int content_len = atoi(value);
+                printf("Content length: %s\n", value);
+                char *content_type = getHeader(req, "Content-Type");
+                if (!content_type)
+                {
+                    printf("No content type\n");
+                    close(newsockfd);
+                    continue;
+                }
+                // TODO : get filename from response headers
+                char *output = NULL;
+                printf("content type => %s\n", content_type);
+                if (!strcmp(content_type, "text/html"))
+                    output = "output.txt";
+                else if (!strcmp(content_type, "image/jpeg"))
+                    output = "output.jpg";
+                else if (!strcmp(content_type, "application/pdf"))
+                    output = "output.pdf";
+                else // default text/*
+                    output = "output.bin";
+                printf("output => %s\n", output);
 
+                FILE *fp = fopen(output, "wb");
+                if (!fp)
+                {
+                    printf("File creation failure.\n");
+                    close(newsockfd);
+                    continue;
+                }
+                int fd = fileno(fp);
+                fwrite(partial_body, sizeof(char), body_len, fp);
+                int bytes_left = content_len - body_len;
+                while (bytes_left > 0)
+                {
+                    int bytes_read = recv(newsockfd, buf, BUF_SIZE, 0);
+                    if (bytes_read == -1)
+                    {
+                        printf("Error reading from socket.\n");
+                        close(newsockfd);
+                        continue;
+                    }
+                    fwrite(buf, bytes_read, sizeof(char), fp);
+                    bytes_left -= bytes_read;
+                }
+                fclose(fp);
+                response = processPutRequest(req, newsockfd);
+                send(newsockfd, response, strlen(response) + 1, 0);
+            }
+            free_request(req);
             // close connection
             close(newsockfd);
             exit(0);
@@ -292,6 +345,40 @@ char *processGetRequest(struct Request *request, int sockfd, int *status_code)
         expires, file_size, content_type);
     printf("HTTP response: %s\n", response);
     *status_code = 200;
+    return response;
+}
+
+char *processPutRequest(struct Request *request, int sockfd)
+{
+    char *filename = request->url;
+    if (filename[0] == '/')
+        filename++;
+    FILE *fp = fopen(filename, "rb");
+    if (fp == NULL)
+    {
+        char *response = "HTTP/1.1 404 Not Found\r\n";
+        return response;
+    }
+    char *expires = getDate(time(NULL) + 3 * 24 * 60 * 60);
+
+    int file_size = 0;
+    fseek(fp, 0L, SEEK_END);
+    file_size = ftell(fp);
+    fseek(fp, 0L, SEEK_SET);
+    fclose(fp);
+
+    char *response = (char *)malloc((MAX_REQ_SIZE) * sizeof(char));
+    char *content_type = getHeader(request, "Accept");
+
+    if (!content_type)
+        content_type = "text/html";
+
+    sprintf(
+        response,
+        "HTTP/1.1 200 OK\r\nExpires: %s\r\nCache-Control: no-store\r\nContent-Language: en-us\r\nContent-Length: %d\r\nContent-Type: %s\r\n\r\n",
+        expires, file_size, content_type);
+    printf("HTTP response: %s\n", response);
+    // *status_code = 200;
     return response;
 }
 

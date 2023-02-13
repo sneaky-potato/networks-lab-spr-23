@@ -47,7 +47,7 @@ void showError(char *s)
 char *getDate(time_t);
 void recv_str(int, char *, char *, int, int *, char *);
 char *getRequest(char *, int, char *, char *);
-char *putRequest(char *, int, char *, char *, int);
+char *putRequest(char *, int, char *, char *);
 struct Response *parse_response_headers(const char *);
 char *getHeader(struct Response *, char *);
 
@@ -173,6 +173,7 @@ int main()
             char *partial_body = (char *)malloc(BUF_SIZE * sizeof(char));
             recv_str(sockfd, local_buf, buf, BUF_SIZE, &body_len, partial_body);
             struct Response *response_headers = parse_response_headers(local_buf);
+            // TODO: status code (400, 403, 404, 4xx, 5xx)
             if (response_headers->status == 200)
             {
                 char *value = getHeader(response_headers, "Content-Length");
@@ -297,9 +298,11 @@ int main()
             printf("localpath is %s\n", localpath);
             printf("filename is %s\n", putfilename);
             printf("filetype is %s\n", filetype);
+            char *finalpath = (char *)malloc((1 + strlen(localpath) + strlen(putfilename)) * sizeof(char));
+            sprintf(finalpath, "%s%s", localpath, putfilename);
             // connect to server
             memset(&servaddr, 0, sizeof(servaddr));
-            servaddr.sin_family = htons(AF_INET);
+            servaddr.sin_family = AF_INET;
             servaddr.sin_addr.s_addr = inet_addr(ip);
             servaddr.sin_port = htons((short int)port);
             if (connect(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr)) == -1)
@@ -307,6 +310,57 @@ int main()
                 printf("Server connection failure.\n");
                 continue;
             }
+
+            char *request = (char *)malloc(MAX_REQ_SIZE * sizeof(char));
+            request = putRequest(ip, port, finalpath, filetype);
+            if (!request)
+            {
+                printf("Error creating request.\n");
+                continue;
+            }
+            send(sockfd, request, strlen(request), 0);
+
+            char *filename = finalpath;
+            if (filename[0] == '/')
+                filename++;
+            FILE *fp = fopen(filename, "rb");
+            int nread;
+            while ((nread = fread(buf, sizeof(char), BUF_SIZE, fp)) > 0)
+            {
+                send(sockfd, buf, nread, 0);
+            }
+            fclose(fp);
+            // poll for response
+            int pollret = poll(&pfd, 1, 3000);
+            if (pollret == 0)
+            {
+                printf("No response from server.\n");
+                close(sockfd);
+                continue;
+            }
+            else if (pollret == -1)
+            {
+                printf("Polling error.\n");
+                continue;
+            }
+
+            // receive response
+            // char *response = (char *)malloc(MAX_REQ_SIZE * sizeof(char));
+            recv_str(sockfd, local_buf, buf, BUF_SIZE, NULL, NULL);
+            printf("Response: %s\n", local_buf);
+            struct Response *response_headers = parse_response_headers(local_buf);
+            if (response_headers->status == 200)
+                printf("Request successful: %s\n", response_headers->status_msg);
+            else if (response_headers->status == 400)
+                printf("Bad Request: %s\n", response_headers->status_msg);
+            else if (response_headers->status == 403)
+                printf("Forbidden Resource: %s\n", response_headers->status_msg);
+            else if (response_headers->status == 404)
+                printf("Resource Not Found: %s\n", response_headers->status_msg);
+            else
+                printf("Unknown error: %s\n", response_headers->status_msg);
+            close(sockfd);
+            continue;
         }
 
         else
@@ -347,7 +401,8 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size, int *body_le
         if (found)
             break;
     }
-    if (found)
+    printf("%s\n", local_buf);
+    if (found && body_len && partial_body)
     {
         *body_len = cnt - i - 4;
         memcpy(partial_body, p + 4, *body_len);
@@ -386,12 +441,27 @@ char *getRequest(char *ip, int port, char *localpath, char *filetype)
     return request;
 }
 
-char *putRequest(char *ip, int port, char *localpath, char *filetype, int content_length)
+char *putRequest(char *ip, int port, char *localpath, char *filetype)
 {
     char *request = (char *)malloc(MAX_REQ_SIZE * sizeof(char));
     char *date = getDate(time(NULL));
-    char *previous_two_date = getDate(time(NULL) - 2 * 24 * 60 * 60);
 
+    char *filename = localpath;
+    if (filename[0] == '/')
+        filename++;
+    FILE *fp = fopen(filename, "rb");
+    if (fp == NULL)
+    {
+        printf("File not found.\n");
+        return NULL;
+    }
+
+    int file_size = 0;
+    fseek(fp, 0L, SEEK_END);
+    file_size = ftell(fp);
+    fseek(fp, 0L, SEEK_SET);
+    fclose(fp);
+    // printf("debug print filesize %d\n", file_size);
     char *content_type = (char *)malloc(100 * sizeof(char));
     content_type = "text/*";
     if (!strcmp(filetype, "html"))
@@ -405,14 +475,15 @@ char *putRequest(char *ip, int port, char *localpath, char *filetype, int conten
 
     sprintf(
         request,
-        "PUT %s HTTP/1.1\nHost: %s:%d\nConnection: close;\nDate: % s\nContent-type: %s\nContent-language: %s\n",
+        "PUT %s HTTP/1.1\r\nHost: %s:%d\r\nConnection: close\r\nDate: %s\r\nContent-Type: %s\r\nContent-Language: %s\r\nContent-Length: %d\r\n\r\n",
         localpath,
         ip,
         port,
         date,
         content_type,
-        content_lang);
-
+        content_lang,
+        file_size);
+    printf("debug print request %s\n", request);
     return request;
 }
 
