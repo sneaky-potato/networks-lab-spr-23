@@ -22,6 +22,22 @@
 #define BUFSIZE 256
 #define MAX_REQ_SIZE 1024
 
+typedef struct Header
+{
+    char *name;
+    char *value;
+    struct Header *next;
+} Header;
+
+typedef struct Response
+{
+    char *version;
+    int status;
+    char *status_msg;
+    struct Header *headers;
+    char *body;
+} Response;
+
 void showError(char *s)
 {
     fprintf(stderr, "ERROR: %s\n", s);
@@ -31,6 +47,7 @@ void showError(char *s)
 char *getDate(time_t);
 char *getRequest(char *, int, char *, char *);
 char *putRequest(char *, int, char *, char *, int);
+struct Response *parse_response(const char *);
 
 int main()
 {
@@ -250,7 +267,7 @@ char *getRequest(char *ip, int port, char *localpath, char *filetype)
 
     sprintf(
         request,
-        "GET %s HTTP/1.1\nHost: %s:%d\nConnection: close\nDate: % s\nAccept: %s\nAccept-Language: %s\nIf-Modified-Since: %s\n",
+        "GET %s HTTP/1.1\r\nHost: %s:%d\r\nConnection: close\r\nDate: % s\r\nAccept: %s\r\nAccept-Language: %s\r\nIf-Modified-Since: %s\r\n",
         localpath,
         ip,
         port,
@@ -290,4 +307,33 @@ char *putRequest(char *ip, int port, char *localpath, char *filetype, int conten
         content_lang);
 
     return request;
+}
+
+struct Response *parse_response(const char *raw)
+{
+    Response *res = (Response *)malloc(sizeof(Response));
+    memset(res, 0, sizeof(struct Response));
+
+    // HTTP-Version
+    size_t ver_len = strcspn(raw, " ");
+    res->version = (char *)malloc((ver_len + 1) * sizeof(char));
+    memcpy(res->version, raw, ver_len);
+    res->version[ver_len] = '\0';
+    raw += ver_len + 1; // move past <SP>
+
+    // Status code
+    size_t status_len = strcspn(raw, " ");
+    char *status_str = (char *)malloc((status_len + 1) * sizeof(char));
+    memcpy(status_str, raw, status_len);
+    res->status = atoi(status_str);
+    raw += status_len + 1; // move past <SP>
+
+    // Ststus message
+    size_t msg_len = strcspn(raw, "\r\n");
+    res->status_msg = (char *)malloc((msg_len + 1) * sizeof(char));
+    memcpy(res->status_msg, raw, msg_len);
+    res->status_msg[msg_len] = '\0';
+    raw += msg_len + 2; // move past <CR><LF>
+
+    return res;
 }

@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <sys/types.h>
+#include <time.h>
 #include <dirent.h>
 
 // #########################################
@@ -17,7 +18,9 @@
 // #########################################
 // # GCC version: gcc (GCC) 12.1.1 20220730
 
-const unsigned PORT = 20001;
+#define MAX_REQ_SIZE 1024
+
+const unsigned PORT = 20000;
 const unsigned BUF_SIZE = 50;
 const unsigned LOCAL_BUF_SIZE = 1024;
 
@@ -27,6 +30,7 @@ typedef enum Method
     PUT,
     UNSUPPORTED
 } Method;
+
 typedef struct Header
 {
     char *name;
@@ -43,14 +47,15 @@ typedef struct Request
     char *body;
 } Request;
 
-// send results in batches function prototype
-void send_results(int, char *, char *, int);
 // recv and store string function prototype
 void recv_str(int, char *, char *, int);
-
-struct Request *parse_request(const char *raw);
+char *getDate(time_t);
+struct Request *parse_request(const char *);
 void free_header(struct Header *h);
 void free_request(struct Request *req);
+char *processGetRequest(struct Request *req, int sockfd, int *status);
+void processPutRequest(struct Request *req, int sockfd);
+void processUnsupportedRequest(struct Request *req, int sockfd);
 
 int main()
 {
@@ -108,6 +113,29 @@ int main()
             // recv http request
             recv_str(newsockfd, local_buf, buf, BUF_SIZE);
             printf("HTTP request:\n%s", local_buf);
+            struct Request *req = parse_request(local_buf);
+            if (req)
+            {
+                printf("Method: %d\n", req->method);
+                printf("Request-URI: %s\n", req->url);
+                printf("HTTP-Version: %s\n", req->version);
+                puts("Headers:");
+                struct Header *h;
+                for (h = req->headers; h; h = h->next)
+                    printf("%32s: %s\n", h->name, h->value);
+            }
+            char *response = NULL;
+            int status_code = 0;
+            if (req->method == GET)
+            {
+                response = processGetRequest(req, newsockfd, &status_code);
+                send(newsockfd, response, strlen(response), 0);
+            }
+            // else if (req->method == PUT)
+            //     processPutRequest(req, newsockfd);
+            // else
+            //     processUnsupportedRequest(req, newsockfd);
+            // free_request(req);
 
             // close connection
             close(newsockfd);
@@ -141,6 +169,14 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size)
     }
 }
 
+char *getDate(time_t t)
+{
+    char *s = (char *)malloc(100 * sizeof(char));
+    struct tm *tm = gmtime(&t);
+    strftime(s, 100, "%a, %d %b %Y %H:%M:%S %Z", tm);
+    return s;
+}
+
 struct Request *parse_request(const char *raw)
 {
     struct Request *req = (struct Request *)malloc(sizeof(struct Request));
@@ -171,7 +207,8 @@ struct Request *parse_request(const char *raw)
     raw += ver_len + 2; // move past <CR><LF>
 
     struct Header *header = NULL, *last = NULL;
-    while (raw[0] != '\r' || raw[1] != '\n')
+
+    while (!((raw[0] == '\r' && raw[1] == '\n') || (raw[0] == '\0')))
     {
         last = header;
         header = malloc(sizeof(Header));
@@ -182,19 +219,13 @@ struct Request *parse_request(const char *raw)
         memcpy(header->name, raw, name_len);
         header->name[name_len] = '\0';
         raw += name_len + 1; // move past :
+
         while (*raw == ' ')
-        {
             raw++;
-        }
 
         // value
         size_t value_len = strcspn(raw, "\r\n");
         header->value = malloc(value_len + 1);
-        if (!header->value)
-        {
-            free_request(req);
-            return NULL;
-        }
         memcpy(header->value, raw, value_len);
         header->value[value_len] = '\0';
         raw += value_len + 2; // move past <CR><LF>
@@ -202,31 +233,56 @@ struct Request *parse_request(const char *raw)
         // next
         header->next = last;
     }
-    req->headers = header;
-    raw += 2; // move past <CR><LF>
+    req->headers = NULL;
+    // raw += 2; // move past <CR><LF>
 
-    size_t body_len = strlen(raw);
-    req->body = malloc(body_len + 1);
-    if (!req->body)
-    {
-        free_request(req);
-        return NULL;
-    }
-    memcpy(req->body, raw, body_len);
-    req->body[body_len] = '\0';
+    // size_t body_len = strlen(raw);
+    // req->body = malloc(body_len + 1);
+    // memcpy(req->body, raw, body_len);
+    // req->body[body_len] = '\0';
 
     return req;
 }
 
+char *processGetRequest(struct Request *request, int sockfd, int *status_code)
+{
+    char *filename = request->url;
+    if (filename[0] == '/')
+        filename++;
+    FILE *fp = fopen(filename, "r");
+    if (fp == NULL)
+    {
+        char *response = "HTTP/1.1 404 Not Found\r\n";
+        *status_code = 404;
+        return response;
+    }
+    char *expires = getDate(time(NULL) + 3 * 24 * 60 * 60);
+
+    int file_size = 0;
+    fseek(fp, 0L, SEEK_END);
+    file_size = ftell(fp);
+    fseek(fp, 0L, SEEK_SET);
+
+    char *response = (char *)malloc((MAX_REQ_SIZE + file_size) * sizeof(char));
+    char *file_content = (char *)malloc(file_size * sizeof(char));
+    fread(file_content, file_size, 1, fp);
+    fclose(fp);
+
+    sprintf(
+        response,
+        "HTTP/1.1 200 OK\r\nExpires: %s\r\nCache-control: no-store\r\nContent-language: en-us\r\nContent-length: %d\r\nContent-Type: text/html\r\n\r\n%s\r\n",
+        expires, file_size, file_content);
+    printf("HTTP response: %s\n", response);
+    *status_code = 200;
+    return response;
+}
+
 void free_header(struct Header *h)
 {
-    if (h)
-    {
-        free(h->name);
-        free(h->value);
-        free_header(h->next);
-        free(h);
-    }
+    free(h->name);
+    free(h->value);
+    free_header(h->next);
+    free(h);
 }
 
 void free_request(struct Request *req)
