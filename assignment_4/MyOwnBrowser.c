@@ -36,7 +36,6 @@ typedef struct Response
     int status;
     char *status_msg;
     struct Header *headers;
-    char *body;
 } Response;
 
 void showError(char *s)
@@ -49,7 +48,8 @@ char *getDate(time_t);
 void recv_str(int, char *, char *, int, int *, char *);
 char *getRequest(char *, int, char *, char *);
 char *putRequest(char *, int, char *, char *, int);
-struct Response *parse_response(const char *);
+struct Response *parse_response_headers(const char *);
+char *getHeader(struct Response *, char *);
 
 int main()
 {
@@ -156,29 +156,80 @@ int main()
             request = getRequest(ip, port, localpath, filetype);
             send(sockfd, request, strlen(request) + 1, 0);
             // poll for response
-            // int pollret = poll(&pfd, 1, 3000);
-            // if (pollret == 0)
-            // {
-            //     printf("No response from server.\n");
-            //     close(sockfd);
-            //     continue;
-            // }
-            // else if (pollret == -1)
-            // {
-            //     printf("Polling error.\n");
-            //     continue;
-            // }
-            // else
-            // {
-            // receive response
+            int pollret = poll(&pfd, 1, 3000);
+            if (pollret == 0)
+            {
+                printf("No response from server.\n");
+                close(sockfd);
+                continue;
+            }
+            else if (pollret == -1)
+            {
+                printf("Polling error.\n");
+                continue;
+            }
             char *response = (char *)malloc(MAX_REQ_SIZE * sizeof(char));
             int body_len;
             char *partial_body = (char *)malloc(BUF_SIZE * sizeof(char));
             recv_str(sockfd, local_buf, buf, BUF_SIZE, &body_len, partial_body);
-            printf("local_buf: %s\n", local_buf);
-            printf("partial_body: %s\n", partial_body);
+            struct Response *response_headers = parse_response_headers(local_buf);
+            if (response_headers->status == 200)
+            {
+                char *value = getHeader(response_headers, "Content-Length");
+                if (!value)
+                {
+                    printf("No content length\n");
+                    close(sockfd);
+                    continue;
+                }
+                int content_len = atoi(value);
+                printf("Content length: %s\n", value);
+                char *content_type = getHeader(response_headers, "Content-Type");
+                if (!content_type)
+                {
+                    printf("No content type\n");
+                    close(sockfd);
+                    continue;
+                }
+                // TODO : get filename from response headers
+                char *output = NULL;
+                printf("content type => %s\n", content_type);
+                if (!strcmp(content_type, "text/html"))
+                    output = "output.txt";
+                else if (!strcmp(content_type, "image/jpeg"))
+                    output = "output.jpg";
+                else if (!strcmp(content_type, "application/pdf"))
+                    output = "output.pdf";
+                else // default text/*
+                    output = "output.bin";
+                printf("output => %s\n", output);
+
+                FILE *fp = fopen(output, "wb");
+                if (!fp)
+                {
+                    printf("File creation failure.\n");
+                    close(sockfd);
+                    continue;
+                }
+                int fd = fileno(fp);
+                fwrite(partial_body, sizeof(char), body_len, fp);
+                int bytes_left = content_len - body_len;
+                while (bytes_left > 0)
+                {
+                    int bytes_read = recv(sockfd, buf, BUF_SIZE, 0);
+                    if (bytes_read == -1)
+                    {
+                        printf("Error reading from socket.\n");
+                        close(sockfd);
+                        continue;
+                    }
+                    fwrite(buf, bytes_read, sizeof(char), fp);
+                    bytes_left -= bytes_read;
+                }
+                fclose(fp);
+            }
+
             close(sockfd);
-            // }
         }
         else if (strcmp(cmd, "PUT") == 0)
         {
@@ -365,7 +416,7 @@ char *putRequest(char *ip, int port, char *localpath, char *filetype, int conten
     return request;
 }
 
-struct Response *parse_response(const char *raw)
+struct Response *parse_response_headers(const char *raw)
 {
     Response *res = (Response *)malloc(sizeof(Response));
     memset(res, 0, sizeof(struct Response));
@@ -420,12 +471,17 @@ struct Response *parse_response(const char *raw)
     }
     res->headers = header;
 
-    raw += 2; // move past <CR><LF>
-
-    size_t body_len = strlen(raw);
-    res->body = malloc(body_len + 1);
-    memcpy(res->body, raw, body_len);
-    res->body[body_len] = '\0';
-
     return res;
+}
+
+char *getHeader(struct Response *response, char *name)
+{
+    struct Header *header = response->headers;
+    while (header != NULL)
+    {
+        if (!strcmp(header->name, name))
+            return header->value;
+        header = header->next;
+    }
+    return NULL;
 }

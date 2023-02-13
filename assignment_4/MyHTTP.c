@@ -51,8 +51,9 @@ typedef struct Request
 void recv_str(int, char *, char *, int, int *, char *);
 char *getDate(time_t);
 struct Request *parse_request_headers(const char *);
-void free_header(struct Header *h);
-void free_request(struct Request *req);
+void free_header(struct Header *);
+void free_request(struct Request *);
+char *getHeader(struct Request *, char *);
 char *processGetRequest(struct Request *req, int sockfd, int *status);
 void processPutRequest(struct Request *req, int sockfd);
 void processUnsupportedRequest(struct Request *req, int sockfd);
@@ -121,10 +122,19 @@ int main()
             if (req->method == GET)
             {
                 response = processGetRequest(req, newsockfd, &status_code);
-                printf("prepped for sendign\n");
-                if (send(newsockfd, response, strlen(response) + 1, 0) == -1)
-                    printf("nhk\n");
-                printf("sent\n");
+                printf("response: %s\n", response);
+                send(newsockfd, response, strlen(response), 0);
+
+                char *filename = req->url;
+                if (filename[0] == '/')
+                    filename++;
+                FILE *fp = fopen(filename, "rb");
+                int nread;
+                while ((nread = fread(buf, sizeof(char), BUF_SIZE, fp)) > 0)
+                {
+                    send(newsockfd, buf, nread, 0);
+                }
+                fclose(fp);
             }
             // else if (req->method == PUT)
             //     processPutRequest(req, newsockfd);
@@ -255,7 +265,7 @@ char *processGetRequest(struct Request *request, int sockfd, int *status_code)
     char *filename = request->url;
     if (filename[0] == '/')
         filename++;
-    FILE *fp = fopen(filename, "r");
+    FILE *fp = fopen(filename, "rb");
     if (fp == NULL)
     {
         char *response = "HTTP/1.1 404 Not Found\r\n";
@@ -268,19 +278,33 @@ char *processGetRequest(struct Request *request, int sockfd, int *status_code)
     fseek(fp, 0L, SEEK_END);
     file_size = ftell(fp);
     fseek(fp, 0L, SEEK_SET);
-
-    char *response = (char *)malloc((MAX_REQ_SIZE + file_size) * sizeof(char));
-    char *file_content = (char *)malloc(file_size * sizeof(char));
-    fread(file_content, file_size, 1, fp);
     fclose(fp);
+
+    char *response = (char *)malloc((MAX_REQ_SIZE) * sizeof(char));
+    char *content_type = getHeader(request, "Accept");
+
+    if (!content_type)
+        content_type = "text/html";
 
     sprintf(
         response,
-        "HTTP/1.1 200 OK\r\nExpires: %s\r\nCache-control: no-store\r\nContent-language: en-us\r\nContent-length: %d\r\nContent-Type: text/html\r\n\r\n%s\r\n",
-        expires, file_size, file_content);
+        "HTTP/1.1 200 OK\r\nExpires: %s\r\nCache-Control: no-store\r\nContent-Language: en-us\r\nContent-Length: %d\r\nContent-Type: %s\r\n\r\n",
+        expires, file_size, content_type);
     printf("HTTP response: %s\n", response);
     *status_code = 200;
     return response;
+}
+
+char *getHeader(struct Request *request, char *name)
+{
+    struct Header *header = request->headers;
+    while (header != NULL)
+    {
+        if (!strcmp(header->name, name))
+            return header->value;
+        header = header->next;
+    }
+    return NULL;
 }
 
 void free_header(struct Header *h)
