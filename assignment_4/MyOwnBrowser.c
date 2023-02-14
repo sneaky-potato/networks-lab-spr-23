@@ -47,7 +47,7 @@ void showError(char *s)
 char *getDate(time_t);
 void recv_str(int, char *, char *, int, int *, char *);
 char *getRequest(char *, int, char *, char *);
-char *putRequest(char *, int, char *, char *);
+char *putRequest(char *, int, char *, char *, char *);
 struct Response *parse_response_headers(const char *);
 char *getHeader(struct Response *, char *);
 
@@ -236,6 +236,7 @@ int main()
                     bytes_left -= bytes_read;
                 }
                 fclose(fp);
+                // this is where we open the document
             }
             close(sockfd);
         }
@@ -287,7 +288,7 @@ int main()
             if (portbegin + 1 == urlcpy)
                 sprintf(localpath, "/"); // case handling for http://<ipaddr>:<portno>
             else
-                sprintf(localpath, "/%s", urlcpy);
+                sprintf(localpath, "/%s/", urlcpy);
             putfilenamecpy = (char *)malloc((strlen(putfilename) + 1) * sizeof(char));
             strcpy(putfilenamecpy, putfilename);
             strtok(putfilenamecpy, ".");
@@ -305,8 +306,8 @@ int main()
             printf("localpath is %s\n", localpath);
             printf("filename is %s\n", putfilename);
             printf("filetype is %s\n", filetype);
-            char *finalpath = (char *)malloc((1 + strlen(localpath) + strlen(putfilename)) * sizeof(char));
-            sprintf(finalpath, "%s%s", localpath, putfilename);
+            // char *finalpath = (char *)malloc((1 + strlen(localpath) + strlen(putfilename)) * sizeof(char));
+            // sprintf(finalpath, "%s%s", localpath, putfilename);
             // connect to server
             memset(&servaddr, 0, sizeof(servaddr));
             servaddr.sin_family = AF_INET;
@@ -317,9 +318,11 @@ int main()
                 printf("Server connection failure.\n");
                 continue;
             }
+            if (putfilename[0] == '/')
+                putfilename++;
 
             char *request = (char *)malloc(MAX_REQ_SIZE * sizeof(char));
-            request = putRequest(ip, port, finalpath, filetype);
+            request = putRequest(ip, port, localpath, putfilename, filetype);
             if (!request)
             {
                 printf("Error creating request.\n");
@@ -327,10 +330,7 @@ int main()
             }
             send(sockfd, request, strlen(request), 0);
 
-            char *filename = finalpath;
-            if (filename[0] == '/')
-                filename++;
-            FILE *fp = fopen(filename, "rb");
+            FILE *fp = fopen(putfilename, "rb");
             int nread;
             while ((nread = fread(buf, sizeof(char), BUF_SIZE, fp)) > 0)
             {
@@ -409,7 +409,7 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size, int *body_le
         if (found)
             break;
     }
-    printf("%s\n", local_buf);
+    // printf("%s\n", local_buf);
     if (found && body_len && partial_body)
     {
         *body_len = cnt - i - 4;
@@ -449,15 +449,17 @@ char *getRequest(char *ip, int port, char *localpath, char *filetype)
     return request;
 }
 
-char *putRequest(char *ip, int port, char *localpath, char *filetype)
+char *putRequest(char *ip, int port, char *localpath, char* putfilename, char *filetype)
 {
     char *request = (char *)malloc(MAX_REQ_SIZE * sizeof(char));
     char *date = getDate(time(NULL));
+    char *finalpath = (char *)malloc((1 + strlen(localpath) + strlen(putfilename)) * sizeof(char));
+    sprintf(finalpath, "%s%s", localpath, putfilename);
 
-    char *filename = localpath;
-    if (filename[0] == '/')
-        filename++;
-    FILE *fp = fopen(filename, "rb");
+    if (putfilename[0] == '/')
+        putfilename++;
+    printf("b;eh %s\n", putfilename);
+    FILE *fp = fopen(putfilename, "rb");
     if (fp == NULL)
     {
         printf("File not found.\n");
@@ -484,7 +486,7 @@ char *putRequest(char *ip, int port, char *localpath, char *filetype)
     sprintf(
         request,
         "PUT %s HTTP/1.1\r\nHost: %s:%d\r\nConnection: close\r\nDate: %s\r\nContent-Type: %s\r\nContent-Language: %s\r\nContent-Length: %d\r\n\r\n",
-        localpath,
+        finalpath,
         ip,
         port,
         date,

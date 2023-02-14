@@ -20,7 +20,7 @@
 
 #define MAX_REQ_SIZE 1024
 
-const unsigned PORT = 20001;
+const unsigned PORT = 20000;
 const unsigned BUF_SIZE = 50;
 const unsigned LOCAL_BUF_SIZE = 1024;
 
@@ -94,10 +94,9 @@ int main()
     memset(&cli_addr, 0, sizeof(cli_addr));
     while (1)
     {
-        // Accept connection fromm client
+        // Accept connection from client
         clilen = sizeof(cli_addr);
         newsockfd = accept(sockfd, (struct sockaddr *)&cli_addr, &clilen);
-
         if (newsockfd < 0)
         {
             printf("Accept error\n");
@@ -114,11 +113,23 @@ int main()
             int body_len = 0;
             char *partial_body = (char *)malloc(sizeof(char) * BUF_SIZE);
             recv_str(newsockfd, local_buf, buf, BUF_SIZE, &body_len, partial_body);
-
+            time_t recvtime = time(NULL);
+            struct tm* recvtm = localtime(&recvtime); // recording the time of receiving response
+            printf("%s\n%d\n", asctime(recvtm), recvtm->tm_mday);
+            printf("\nRequest received:\n%s\n", local_buf);
             struct Request *req = parse_request_headers(local_buf);
             char *response = NULL;
             int status_code = 0;
-
+            // TODO: append to AccessLog.txt
+            // format:- ddmmyy:hhmmss:clientip:clientport:GET/PUT:URL
+            char* cli_ip = inet_ntoa(cli_addr.sin_addr);
+            int cli_port = (int)ntohs(cli_addr.sin_port);
+            FILE* flog = fopen("AccessLog.txt", "a");
+            fprintf(flog, "%02d%02d%02d:%02d%02d%02d:%s:%d:", 
+                    recvtm->tm_mday, recvtm->tm_mon+1, recvtm->tm_year-100,
+                    recvtm->tm_hour, recvtm->tm_min, recvtm->tm_sec,
+                    cli_ip, cli_port
+                    );
             if (req->method == GET)
             {
                 response = processGetRequest(req, newsockfd, &status_code);
@@ -128,6 +139,10 @@ int main()
                 char *filename = req->url;
                 if (filename[0] == '/')
                     filename++;
+                // complete log entry for GET
+                fprintf(flog, "GET:/%s\n", filename);
+                fclose(flog);
+
                 FILE *fp = fopen(filename, "rb");
                 int nread;
                 while ((nread = fread(buf, sizeof(char), BUF_SIZE, fp)) > 0)
@@ -138,6 +153,13 @@ int main()
             }
             else if (req->method == PUT)
             {
+                printf("some shiz %s\n", req->url);
+                char* filedir = req->url;
+                if(filedir[0]=='/') filedir++;
+                // long entry completion for PUT
+                fprintf(flog, "PUT:/%s\n", filedir);
+                fclose(flog);
+
                 char *value = getHeader(req, "Content-Length");
                 if (!value)
                 {
@@ -158,13 +180,14 @@ int main()
                 char *output = NULL;
                 printf("content type => %s\n", content_type);
                 if (!strcmp(content_type, "text/html"))
-                    output = "output.txt";
+                    output = "/a/output.txt";
                 else if (!strcmp(content_type, "image/jpeg"))
-                    output = "output.jpg";
+                    output = "/a/output.jpg";
                 else if (!strcmp(content_type, "application/pdf"))
-                    output = "output.pdf";
+                    output = "/a/output.pdf";
                 else // default text/*
-                    output = "output.bin";
+                    output = "/a/output.bin";
+                output = filedir;
                 printf("output => %s\n", output);
 
                 FILE *fp = fopen(output, "wb");
@@ -174,7 +197,6 @@ int main()
                     close(newsockfd);
                     continue;
                 }
-                int fd = fileno(fp);
                 fwrite(partial_body, sizeof(char), body_len, fp);
                 int bytes_left = content_len - body_len;
                 while (bytes_left > 0)
@@ -197,7 +219,6 @@ int main()
             close(newsockfd);
             exit(0);
         }
-        wait(NULL);
         close(newsockfd);
     }
     return 0;
