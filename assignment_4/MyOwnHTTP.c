@@ -325,7 +325,7 @@ char *processGetRequest(struct Request *request, int sockfd, int *status_code)
     FILE *fp = fopen(filename, "rb");
     if (fp == NULL)
     {
-        char *response = "HTTP/1.1 404 Not Found\r\n";
+        char *response = "HTTP/1.1 404 Not Found\r\n\r\n";
         *status_code = 404;
         return response;
     }
