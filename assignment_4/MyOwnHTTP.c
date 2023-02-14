@@ -3,9 +3,9 @@
     Assignment No: 4
     Group No: 16
     Members: Ashwani Kumar Kamal (20CS10011), Kartik Pontula (20CS10031)
-    Program Synopsis: Client program to send GET and PUT requests to a HTTP server and parse responses
+    Program Synopsis: Concurrent HTTP server program to parse GET and PUT requests and respond to clients.
     Usage:
-        gcc MyOwnBrowser.c -o cli && ./cli
+        gcc MyOwnHTTP.c -o serv && ./serv
 */
 #include <stdio.h>
 #include <stdlib.h>
