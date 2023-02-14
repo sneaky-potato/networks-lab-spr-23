@@ -1,3 +1,12 @@
+/*
+    CS39006 - Networks Laboratory, Spring Semester 2022-2023
+    Assignment No: 4
+    Group No: 16
+    Members: Ashwani Kumar Kamal (20CS10011), Kartik Pontula (20CS10031)
+    Program Synopsis: Client program to send GET and PUT requests to a HTTP server and parse responses
+    Usage:
+        gcc MyOwnBrowser.c -o cli && ./cli
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -10,13 +19,6 @@
 #include <ctype.h>
 #include <time.h>
 #include <dirent.h>
-
-// #########################################
-// ## Ashwani Kumar Kamal (20CS10011)     ##
-// ## Networks Laboratory                 ##
-// ## Assignment - 4                      ##
-// #########################################
-// # GCC version: gcc (GCC) 12.1.1 20220730
 
 #define MAX_REQ_SIZE 1024
 
