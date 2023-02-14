@@ -115,8 +115,7 @@ int main()
             recv_str(newsockfd, local_buf, buf, BUF_SIZE, &body_len, partial_body);
             time_t recvtime = time(NULL);
             struct tm* recvtm = localtime(&recvtime); // recording the time of receiving response
-            printf("%s\n%d\n", asctime(recvtm), recvtm->tm_mday);
-            printf("\nRequest received:\n%s\n", local_buf);
+            printf("\nRequest received from client:\n%s\n", local_buf);
             struct Request *req = parse_request_headers(local_buf);
             char *response = NULL;
             int status_code = 0;
@@ -133,7 +132,7 @@ int main()
             if (req->method == GET)
             {
                 response = processGetRequest(req, newsockfd, &status_code);
-                // printf("response: %s\n", response);
+                printf("\nResponse sent to client: \n%s\n", response);
                 send(newsockfd, response, strlen(response), 0);
 
                 char *filename = req->url;
@@ -153,7 +152,6 @@ int main()
             }
             else if (req->method == PUT)
             {
-                printf("some shiz %s\n", req->url);
                 char* filedir = req->url;
                 if(filedir[0]=='/') filedir++;
                 // long entry completion for PUT
@@ -168,7 +166,6 @@ int main()
                     continue;
                 }
                 int content_len = atoi(value);
-                printf("Content length: %s\n", value);
                 char *content_type = getHeader(req, "Content-Type");
                 if (!content_type)
                 {
@@ -176,19 +173,16 @@ int main()
                     close(newsockfd);
                     continue;
                 }
-                // TODO : get filename from response headers
-                char *output = NULL;
-                printf("content type => %s\n", content_type);
-                if (!strcmp(content_type, "text/html"))
-                    output = "/a/output.txt";
-                else if (!strcmp(content_type, "image/jpeg"))
-                    output = "/a/output.jpg";
-                else if (!strcmp(content_type, "application/pdf"))
-                    output = "/a/output.pdf";
-                else // default text/*
-                    output = "/a/output.bin";
-                output = filedir;
-                printf("output => %s\n", output);
+                // // TODO : get filename from response headers
+                // if (!strcmp(content_type, "text/html"))
+                //     output = "/a/output.txt";
+                // else if (!strcmp(content_type, "image/jpeg"))
+                //     output = "/a/output.jpg";
+                // else if (!strcmp(content_type, "application/pdf"))
+                //     output = "/a/output.pdf";
+                // else // default text/*
+                //     output = "/a/output.bin";
+                char *output = filedir;
 
                 FILE *fp = fopen(output, "wb");
                 if (!fp)
@@ -214,6 +208,7 @@ int main()
                 fclose(fp);
                 response = processPutRequest(req, newsockfd);
                 send(newsockfd, response, strlen(response) + 1, 0);
+                printf("\nResponse sent to client:\n%s\n", response);
             }
             free_request(req);
             close(newsockfd);
@@ -396,7 +391,6 @@ char *processPutRequest(struct Request *request, int sockfd)
         response,
         "HTTP/1.1 200 OK\r\nExpires: %s\r\nCache-Control: no-store\r\nContent-Language: en-us\r\nContent-Length: %d\r\nContent-Type: %s\r\n\r\n",
         expires, file_size, content_type);
-    printf("HTTP response: %s\n", response);
     // *status_code = 200;
     return response;
 }

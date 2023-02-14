@@ -161,6 +161,7 @@ int main()
             // prepare request
             char *request = (char *)malloc(MAX_REQ_SIZE * sizeof(char));
             request = getRequest(ip, port, localpath, filetype);
+            printf("\nRequest sent to server:\n%s\n", request);
             send(sockfd, request, strlen(request) + 1, 0);
             // poll for response
             int pollret = poll(&pfd, 1, 3000);
@@ -180,6 +181,7 @@ int main()
             int body_len;
             char *partial_body = (char *)malloc(BUF_SIZE * sizeof(char));
             recv_str(sockfd, local_buf, buf, BUF_SIZE, &body_len, partial_body);
+            printf("\nResponse from server:\n%s\n", local_buf);
             struct Response *response_headers = parse_response_headers(local_buf);
             // TODO: status code (400, 403, 404, 4xx, 5xx)
             if (response_headers->status == 200)
@@ -301,13 +303,14 @@ int main()
             memset(filetype, 0, 5);
             strcpy(filetype, tempfiletype);
             // printf("URL is %s\n", url);
-            printf("IP is %s\n", ip);
-            printf("port is %d\n", port);
-            printf("localpath is %s\n", localpath);
-            printf("filename is %s\n", putfilename);
-            printf("filetype is %s\n", filetype);
+            // printf("IP is %s\n", ip);
+            // printf("port is %d\n", port);
+            // printf("localpath is %s\n", localpath);
+            // printf("filename is %s\n", putfilename);
+            // printf("filetype is %s\n", filetype);
             // char *finalpath = (char *)malloc((1 + strlen(localpath) + strlen(putfilename)) * sizeof(char));
             // sprintf(finalpath, "%s%s", localpath, putfilename);
+            
             // connect to server
             memset(&servaddr, 0, sizeof(servaddr));
             servaddr.sin_family = AF_INET;
@@ -328,6 +331,7 @@ int main()
                 printf("Error creating request.\n");
                 continue;
             }
+            printf("\nRequest sent to server:\n%s\n", request);
             send(sockfd, request, strlen(request), 0);
 
             FILE *fp = fopen(putfilename, "rb");
@@ -355,7 +359,7 @@ int main()
             // receive response
             // char *response = (char *)malloc(MAX_REQ_SIZE * sizeof(char));
             recv_str(sockfd, local_buf, buf, BUF_SIZE, NULL, NULL);
-            printf("Response: %s\n", local_buf);
+            printf("Response from server: \n%s\n", local_buf);
             struct Response *response_headers = parse_response_headers(local_buf);
             if (response_headers->status == 200)
                 printf("Request successful: %s\n", response_headers->status_msg);
@@ -458,7 +462,7 @@ char *putRequest(char *ip, int port, char *localpath, char* putfilename, char *f
 
     if (putfilename[0] == '/')
         putfilename++;
-    printf("b;eh %s\n", putfilename);
+
     FILE *fp = fopen(putfilename, "rb");
     if (fp == NULL)
     {
@@ -493,7 +497,7 @@ char *putRequest(char *ip, int port, char *localpath, char* putfilename, char *f
         content_type,
         content_lang,
         file_size);
-    printf("debug print request %s\n", request);
+    // printf("debug print request %s\n", request);
     return request;
 }
 
