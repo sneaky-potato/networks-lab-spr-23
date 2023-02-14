@@ -15,6 +15,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/poll.h>
+#include <sys/wait.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <time.h>
@@ -194,7 +195,6 @@ int main()
                     continue;
                 }
                 int content_len = atoi(value);
-                printf("Content length: %s\n", value);
                 char *content_type = getHeader(response_headers, "Content-Type");
                 if (!content_type)
                 {
@@ -202,20 +202,10 @@ int main()
                     close(sockfd);
                     continue;
                 }
-                // TODO : get filename from response headers
-                char *output = NULL;
-                printf("content type => %s\n", content_type);
-                if (!strcmp(content_type, "text/html"))
-                    output = "output.txt";
-                else if (!strcmp(content_type, "image/jpeg"))
-                    output = "output.jpg";
-                else if (!strcmp(content_type, "application/pdf"))
-                    output = "output.pdf";
-                else // default text/*
-                    output = "output.bin";
-                printf("output => %s\n", output);
+                
+                char* filedir = 1+strrchr(localpath, '/');
 
-                FILE *fp = fopen(output, "wb");
+                FILE *fp = fopen(filedir, "wb");
                 if (!fp)
                 {
                     printf("File creation failure.\n");
@@ -238,7 +228,15 @@ int main()
                     bytes_left -= bytes_read;
                 }
                 fclose(fp);
-                // this is where we open the document
+                // this is where we open the document using filedir
+                if(fork() == 0)
+                {
+                    // exec call
+                    execlp("xdg-open", filedir, NULL);
+                    printf("uh there be a problem\n");
+                }
+                wait(NULL);
+                printf("waiting done\n");
             }
             close(sockfd);
         }

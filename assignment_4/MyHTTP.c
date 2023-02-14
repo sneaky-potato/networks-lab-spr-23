@@ -173,18 +173,8 @@ int main()
                     close(newsockfd);
                     continue;
                 }
-                // // TODO : get filename from response headers
-                // if (!strcmp(content_type, "text/html"))
-                //     output = "/a/output.txt";
-                // else if (!strcmp(content_type, "image/jpeg"))
-                //     output = "/a/output.jpg";
-                // else if (!strcmp(content_type, "application/pdf"))
-                //     output = "/a/output.pdf";
-                // else // default text/*
-                //     output = "/a/output.bin";
-                char *output = filedir;
 
-                FILE *fp = fopen(output, "wb");
+                FILE *fp = fopen(filedir, "wb");
                 if (!fp)
                 {
                     printf("File creation failure.\n");
