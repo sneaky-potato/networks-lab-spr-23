@@ -232,11 +232,21 @@ int main()
                 if(fork() == 0)
                 {
                     // exec call
-                    execlp("xdg-open", filedir, NULL);
-                    printf("uh there be a problem\n");
+                    // if html
+                    int filelen = strlen(filedir);
+                    if(strcmp(filedir+filelen-5, ".html") == 0)
+	                    execlp("google-chrome", "google-chrome", filedir, NULL);
+	                else if(strcmp(filedir+filelen-4, ".pdf") == 0)
+	                    execlp("acroread", "acroread", filedir, NULL);
+	                else if((strcmp(filedir+filelen-4, ".jpg") == 0) || (strcmp(filedir+filelen-5, ".jpeg")))
+	                    execlp("eog", "eog", filedir, NULL);
+	                else
+		                execlp("gedit", "gedit", filedir, NULL);
+					
+                    printf("Error in opening file with appropriate application.\n");
+                    exit(0);
                 }
                 wait(NULL);
-                printf("waiting done\n");
             }
             close(sockfd);
         }
