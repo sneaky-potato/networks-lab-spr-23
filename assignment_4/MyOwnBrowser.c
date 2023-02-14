@@ -58,15 +58,18 @@ int main()
     char *local_buf = (char *)malloc(sizeof(char) * LOCAL_BUF_SIZE);
     char *ws = " \n\r\a\t", *ipsep = "/:";
     struct sockaddr_in servaddr;
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd == -1)
-        showError("Socket creation failure.");
     struct pollfd pfd;
-    pfd.fd = sockfd;
-    pfd.events = POLLIN;
 
     for (; 1;)
     {
+        // create socket
+        sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        if (sockfd == -1)
+            showError("Socket creation failure.");
+        struct pollfd pfd;
+        pfd.fd = sockfd;
+        pfd.events = POLLIN;
+
         fflush(stdin);
         printf("MyOwnBrowser> ");
         // accept user input
@@ -78,6 +81,7 @@ int main()
         if (!cmd)
         {
             printf("Please enter a non-empty command\n");
+            close(sockfd);
             continue;
         }
         // perform appropriate operation
@@ -95,6 +99,7 @@ int main()
             if (!url)
             {
                 printf("Missing URL\n");
+                close(sockfd);
                 continue;
             }
             if (strtok(NULL, ws))
@@ -109,6 +114,7 @@ int main()
             if (strstr(urlcpy, "http://") != urlcpy)
             {
                 printf("Enter a URL that begins with http:// \n");
+                close(sockfd);
                 continue;
             }
             urlcpy += strlen("http://");
@@ -125,10 +131,10 @@ int main()
             if (!ip)
             {
                 printf("Please enter a non-empty IP\n");
+                close(sockfd);
                 continue;
             }
-            // TODO: invalid IP handling
-            // at this point in the code, urlcpy is <IPADDR>/etc/filename.pdf (with port number)
+
             urlcpy += strlen(ip) + 1;
             sprintf(localpath, "/%s", urlcpy);
             strtok(urlcpy, ".");
@@ -136,6 +142,7 @@ int main()
             if (!tempfiletype)
             {
                 printf("Address must contain a filetype and not a directory\n");
+                close(sockfd);
                 continue;
             }
             memset(filetype, 0, 5);
@@ -166,6 +173,7 @@ int main()
             else if (pollret == -1)
             {
                 printf("Polling error.\n");
+                close(sockfd);
                 continue;
             }
             char *response = (char *)malloc(MAX_REQ_SIZE * sizeof(char));
@@ -229,7 +237,6 @@ int main()
                 }
                 fclose(fp);
             }
-
             close(sockfd);
         }
         else if (strcmp(cmd, "PUT") == 0)
@@ -341,6 +348,7 @@ int main()
             else if (pollret == -1)
             {
                 printf("Polling error.\n");
+                close(sockfd);
                 continue;
             }
 
@@ -429,7 +437,7 @@ char *getRequest(char *ip, int port, char *localpath, char *filetype)
 
     sprintf(
         request,
-        "GET %s HTTP/1.1\r\nHost: %s:%d\r\nConnection: close\r\nDate: % s\r\nAccept: %s\r\nAccept-Language: %s\r\nIf-Modified-Since: %s\r\n\r\n",
+        "GET %s HTTP/1.1\r\nHost: %s:%d\r\nConnection: close\r\nDate: %s\r\nAccept: %s\r\nAccept-Language: %s\r\nIf-Modified-Since: %s\r\n\r\n",
         localpath,
         ip,
         port,

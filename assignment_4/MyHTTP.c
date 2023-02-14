@@ -4,10 +4,10 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <ctype.h>
-#include <sys/types.h>
 #include <time.h>
 #include <dirent.h>
 
@@ -44,7 +44,6 @@ typedef struct Request
     char *url;
     char *version;
     struct Header *headers;
-    char *body;
 } Request;
 
 // recv and store string function prototype
@@ -92,7 +91,7 @@ int main()
     listen(sockfd, 5);
 
     printf("Server running on port: %d\nWaiting for incoming connections...\n", PORT);
-
+    memset(&cli_addr, 0, sizeof(cli_addr));
     while (1)
     {
         // Accept connection fromm client
@@ -123,7 +122,7 @@ int main()
             if (req->method == GET)
             {
                 response = processGetRequest(req, newsockfd, &status_code);
-                printf("response: %s\n", response);
+                // printf("response: %s\n", response);
                 send(newsockfd, response, strlen(response), 0);
 
                 char *filename = req->url;
@@ -195,11 +194,10 @@ int main()
                 send(newsockfd, response, strlen(response) + 1, 0);
             }
             free_request(req);
-            // close connection
             close(newsockfd);
             exit(0);
         }
-
+        wait(NULL);
         close(newsockfd);
     }
     return 0;
@@ -220,9 +218,9 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size, int *body_le
     while ((t = recv(sockfd, buf, BUF_SIZE, 0)) > 0)
     {
         memcpy(local_buf + cnt, buf, t);
-        printf(">%s\n", local_buf);
+        // printf(">%s\n", local_buf);
         cnt += t;
-        printf("cnt: %d\n", cnt);
+        // printf("cnt: %d\n", cnt);
         for (i = 0; i < cnt - 3; i++)
         {
             if (local_buf[i] == '\r' && local_buf[i + 1] == '\n' && local_buf[i + 2] == '\r' && local_buf[i + 3] == '\n')
@@ -235,7 +233,7 @@ void recv_str(int sockfd, char *local_buf, char *buf, int buf_size, int *body_le
         if (found)
             break;
     }
-    printf("recv ends\n");
+    // printf("recv ends\n");
     if (found)
     {
         *body_len = cnt - i - 4;
@@ -343,7 +341,7 @@ char *processGetRequest(struct Request *request, int sockfd, int *status_code)
         response,
         "HTTP/1.1 200 OK\r\nExpires: %s\r\nCache-Control: no-store\r\nContent-Language: en-us\r\nContent-Length: %d\r\nContent-Type: %s\r\n\r\n",
         expires, file_size, content_type);
-    printf("HTTP response: %s\n", response);
+    // printf("HTTP response: %s\n", response);
     *status_code = 200;
     return response;
 }
@@ -394,19 +392,13 @@ char *getHeader(struct Request *request, char *name)
     return NULL;
 }
 
-void free_header(struct Header *h)
-{
-    free(h->name);
-    free(h->value);
-    free_header(h->next);
-    free(h);
-}
-
 void free_request(struct Request *req)
 {
     free(req->url);
     free(req->version);
-    free_header(req->headers);
-    free(req->body);
+    free(req->headers->name);
+    free(req->headers->value);
+    free(req->headers->next);
+    free(req->headers);
     free(req);
 }
