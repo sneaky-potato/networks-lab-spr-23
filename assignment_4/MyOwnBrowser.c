@@ -1,12 +1,11 @@
 /*
-    CS39006 - Networks Laboratory, Spring Semester 2022-2023
-    Assignment 4
-    Name: Kartik Pontula
-    Roll No: 20CS10031
-    Program Synopsis: Client-side socket program for HTTP requests
-    Usage:
-        gcc MyOwnBrowser.c -o cli
-        ./cli
+	CS39006 - Networks Laboratory, Spring Semester 2022-2023
+    	Assignment No: 4
+    	Group No: 16
+    	Members: Ashwani Kumar Kamal (20CS10011), Kartik Pontula (20CS10031)
+    	Program Synopsis: Client program to send GET and PUT requests to a HTTP server and parse responses.
+    	Usage:
+        gcc MyOwnBrowser.c -o cli && ./cli
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -85,8 +84,7 @@ int main()
             close(sockfd);
             continue;
         }
-        // perform appropriate operation
-        // remember to poll for max 3 seconds, retry if no response
+
         if (strcmp(cmd, "QUIT") == 0)
         {
             if (strtok(NULL, ws))
@@ -105,10 +103,7 @@ int main()
             }
             if (strtok(NULL, ws))
                 printf("Command format: GET <url>\n");
-            // TODO: date
 
-            // code to parse IP and port
-            // NOTE: Don't use urlcpy outside this else-if block
             urlcpy = (char *)malloc((strlen(url) + 1) * sizeof(char));
             strcpy(urlcpy, url);
             localpath = (char *)malloc((strlen(url) + 1) * sizeof(char));
@@ -123,7 +118,6 @@ int main()
             if (portbegin)
             {
                 sscanf(portbegin + 1, "%d", &port);
-                // TODO: invalid port handling
                 *portbegin = '\0';
             }
             else
@@ -184,7 +178,6 @@ int main()
             recv_str(sockfd, local_buf, buf, BUF_SIZE, &body_len, partial_body);
             printf("\nResponse from server:\n%s\n", local_buf);
             struct Response *response_headers = parse_response_headers(local_buf);
-            // TODO: status code (400, 403, 404, 4xx, 5xx)
             // printf("%d %s\n", response_headers->status, response_headers->status_msg);
             if (response_headers->status == 200)
             {
@@ -233,8 +226,6 @@ int main()
                 // this is where we open the document using filedir
                 if(fork() == 0)
                 {
-                    // exec call
-                    // if html
                     int filelen = strlen(filedir);
                     if(strcmp(filedir+filelen-5, ".html") == 0)
 	                    execlp("google-chrome", "google-chrome", filedir, NULL);
@@ -290,7 +281,6 @@ int main()
             if (portbegin)
             {
                 sscanf(portbegin + 1, "%d", &port);
-                // TODO: invalid port handling
                 *portbegin = '\0';
             }
             else
@@ -301,10 +291,7 @@ int main()
                 printf("Please enter a non-empty IP\n");
                 continue;
             }
-            // TODO: invalid IP handling
-            // at this point in the code, urlcpy is <IPADDR>/etc/filename.pdf (with port number)
             urlcpy += strlen(ip) + 1;
-            // printf("debug print %s\n", urlcpy);
             if (portbegin + 1 == urlcpy)
                 sprintf(localpath, "/"); // case handling for http://<ipaddr>:<portno>
             else
@@ -320,14 +307,6 @@ int main()
             }
             memset(filetype, 0, 5);
             strcpy(filetype, tempfiletype);
-            // printf("URL is %s\n", url);
-            // printf("IP is %s\n", ip);
-            // printf("port is %d\n", port);
-            // printf("localpath is %s\n", localpath);
-            // printf("filename is %s\n", putfilename);
-            // printf("filetype is %s\n", filetype);
-            // char *finalpath = (char *)malloc((1 + strlen(localpath) + strlen(putfilename)) * sizeof(char));
-            // sprintf(finalpath, "%s%s", localpath, putfilename);
             
             // connect to server
             memset(&servaddr, 0, sizeof(servaddr));
