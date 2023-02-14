@@ -185,8 +185,10 @@ int main()
             printf("\nResponse from server:\n%s\n", local_buf);
             struct Response *response_headers = parse_response_headers(local_buf);
             // TODO: status code (400, 403, 404, 4xx, 5xx)
+            // printf("%d %s\n", response_headers->status, response_headers->status_msg);
             if (response_headers->status == 200)
             {
+            	printf("Status code: 200\nOK\n");
                 char *value = getHeader(response_headers, "Content-Length");
                 if (!value)
                 {
@@ -248,6 +250,14 @@ int main()
                 }
                 wait(NULL);
             }
+            else if(response_headers->status == 400)
+            	printf("Status code: 400\nBad request\n");
+            else if(response_headers->status == 403)
+            	printf("Status code: 403\nForbidden resource\n");
+            else if(response_headers->status == 404)
+            	printf("Status code: 404\nResource not found\n");
+            else
+            	printf("Status code: %d\nUnknown error\n", response_headers->status);
             close(sockfd);
         }
         else if (strcmp(cmd, "PUT") == 0)
@@ -467,7 +477,7 @@ char *putRequest(char *ip, int port, char *localpath, char* putfilename, char *f
     char *date = getDate(time(NULL));
     char *finalpath = (char *)malloc((1 + strlen(localpath) + strlen(putfilename)) * sizeof(char));
     sprintf(finalpath, "%s%s", localpath, putfilename);
-
+	if(finalpath[0] == '/' && finalpath[1] == '/') finalpath++;
     if (putfilename[0] == '/')
         putfilename++;
 
