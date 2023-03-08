@@ -1,12 +1,12 @@
-# Assignment 4 &middot;
+# Assignment 5 &middot;
 
 >
 
-Directory for the `fourth` assignment of Networks Laboratory course (CS39006) offered in Spring semester 2023, Department of CSE, IIT Kharagpur.
+Directory for the `fifth` assignment of Networks Laboratory course (CS39006) offered in Spring semester 2023, Department of CSE, IIT Kharagpur.
 
 ## Getting started
 
-Read the assignment problem statement from [Assignment_4.pdf](/assignment_4/Assignment_4.pdf)
+Read the assignment problem statement from [Assignment_5.pdf](/assignment_5/Assignment_5.pdf)
 
 ## Solution
 
