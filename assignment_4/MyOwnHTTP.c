@@ -116,21 +116,20 @@ int main()
             char *partial_body = (char *)malloc(sizeof(char) * BUF_SIZE);
             recv_str(newsockfd, local_buf, buf, BUF_SIZE, &body_len, partial_body);
             time_t recvtime = time(NULL);
-            struct tm* recvtm = localtime(&recvtime); // recording the time of receiving response
+            struct tm *recvtm = localtime(&recvtime); // recording the time of receiving response
             printf("\nRequest received from client:\n%s\n", local_buf);
             struct Request *req = parse_request_headers(local_buf);
             char *response = NULL;
             int status_code = 0;
             // TODO: append to AccessLog.txt
             // format:- ddmmyy:hhmmss:clientip:clientport:GET/PUT:URL
-            char* cli_ip = inet_ntoa(cli_addr.sin_addr);
+            char *cli_ip = inet_ntoa(cli_addr.sin_addr);
             int cli_port = (int)ntohs(cli_addr.sin_port);
-            FILE* flog = fopen("AccessLog.txt", "a");
-            fprintf(flog, "%02d%02d%02d:%02d%02d%02d:%s:%d:", 
-                    recvtm->tm_mday, recvtm->tm_mon+1, recvtm->tm_year-100,
+            FILE *flog = fopen("AccessLog.txt", "a");
+            fprintf(flog, "%02d%02d%02d:%02d%02d%02d:%s:%d:",
+                    recvtm->tm_mday, recvtm->tm_mon + 1, recvtm->tm_year - 100,
                     recvtm->tm_hour, recvtm->tm_min, recvtm->tm_sec,
-                    cli_ip, cli_port
-                    );
+                    cli_ip, cli_port);
             if (req->method == GET)
             {
                 response = processGetRequest(req, newsockfd, &status_code);
@@ -154,8 +153,9 @@ int main()
             }
             else if (req->method == PUT)
             {
-                char* filedir = req->url;
-                if(filedir[0]=='/') filedir++;
+                char *filedir = req->url;
+                if (filedir[0] == '/')
+                    filedir++;
                 // long entry completion for PUT
                 fprintf(flog, "PUT:/%s\n", filedir);
                 fclose(flog);
