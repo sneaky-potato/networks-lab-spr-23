@@ -7,10 +7,21 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 #include <ctype.h>
 
 // 0 so that it does not conflict with the other types
 #define SOCK_MyTCP 0
+#define MAX_BUFFER_SIZE 10
+#define MAX_MESSAGE_SIZE 5000
+
+typedef struct _BUFFER
+{
+    char **list;
+    int size;
+    int head;
+    int tail;
+} BUFFER;
 
 int my_socket(int __domain, int __type, int __protocol);
 

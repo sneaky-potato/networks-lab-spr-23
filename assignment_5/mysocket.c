@@ -1,8 +1,27 @@
 #include "mysocket.h"
 
+pthread_t sender, receiver;
+BUFFER *Send_Message;
+BUFFER *Received_Message;
+
 int my_socket(int __domain, int __type, int __protocol)
 {
-    int sockfd = socket(__domain, __type, __protocol);
+    if (__type != SOCK_MyTCP)
+    {
+        perror("Error: Only SOCK_MyTCP is supported");
+        exit(1);
+    }
+
+    // Initializing the buffers
+    init_buffer(&Send_Message);
+    init_buffer(&Received_Message);
+
+    // Creating the threads
+    pthread_create(&sender, NULL, send_routine, NULL);
+    pthread_create(&receiver, NULL, receive_routine, NULL);
+
+    // Creating a tcp socket
+    int sockfd = socket(__domain, SOCK_STREAM, __protocol);
     if (sockfd < 0)
     {
         perror("Error opening socket");
@@ -86,4 +105,25 @@ int my_close(int __fd)
         exit(1);
     }
     return close_status;
+}
+
+void *send_routine()
+{
+}
+
+void *receive_routine()
+{
+}
+
+void init_buffer(BUFFER **buffer)
+{
+    *buffer = (BUFFER *)malloc(sizeof(BUFFER));
+    (*buffer)->list = (char **)malloc(sizeof(char *) * MAX_BUFFER_SIZE);
+
+    for (int i = 0; i < MAX_BUFFER_SIZE; i++)
+        (*buffer)->list[i] = (char *)malloc(sizeof(char) * MAX_MESSAGE_SIZE);
+
+    (*buffer)->size = 10;
+    (*buffer)->head = -1;
+    (*buffer)->tail = -1;
 }
