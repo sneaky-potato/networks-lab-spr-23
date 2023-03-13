@@ -11,7 +11,7 @@ HEADERS = $(MAIN:.c=.h)
 $(TARGET_LIB): $(OBJS)
 	$(AR) rcs $@ $^
 
-$(OBJS): $(HEADERS)
+$(OBJS): $(HEADERS) $(MAIN)
 	$(CC) $(CFLAGS) -c $(MAIN)
 
 clean:

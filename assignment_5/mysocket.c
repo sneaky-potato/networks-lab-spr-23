@@ -17,7 +17,7 @@ int my_socket(int __domain, int __type, int __protocol)
     if (__type != SOCK_MyTCP)
     {
         perror("Error: Only SOCK_MyTCP is supported");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     // Initializing the buffers
@@ -33,7 +33,7 @@ int my_socket(int __domain, int __type, int __protocol)
     if (sockfd < 0)
     {
         perror("Error opening socket");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
     return sockfd;
 }
@@ -106,6 +106,8 @@ int my_recv(int __fd, void *__buf, size_t __n, int __flags)
 
 int my_close(int __fd)
 {
+    dealloc_buffer(&Send_Message);
+    dealloc_buffer(&Received_Message);
     int close_status = close(__fd);
     if (close_status < 0)
     {
@@ -134,6 +136,17 @@ void init_buffer(BUFFER **buffer)
     (*buffer)->size = 10;
     (*buffer)->head = -1;
     (*buffer)->tail = -1;
+}
+
+void dealloc_buffer(BUFFER **buffer)
+{
+    free((*buffer)->size);
+    free((*buffer)->head);
+    free((*buffer)->tail);
+    for (int i = 0; i < MAX_BUFFER_SIZE; i++)
+        free((*buffer)->list[i]);
+    free((*buffer)->list);
+    free((*buffer));
 }
 
 void enqueue(BUFFER *buffer, char *message)

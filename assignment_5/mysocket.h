@@ -1,3 +1,6 @@
+#ifndef __MYSOCKET_H
+#define __MYSOCKET_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -48,5 +51,8 @@ int my_close(int __fd);
 void *send_routine();
 void *receive_routine();
 void init_buffer(BUFFER **buffer);
+void dealloc_buffer(BUFFER **buffer);
 void enqueue(BUFFER *buffer, char *message);
 char *dequeue(BUFFER *buffer);
+
+#endif

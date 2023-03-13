@@ -6,7 +6,7 @@ int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        printf("Supply port number as command line argument");
+        printf("Supply port number as command line argument\n");
         exit(EXIT_FAILURE);
     }
 
