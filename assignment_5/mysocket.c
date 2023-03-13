@@ -84,30 +84,28 @@ int my_connect(int __fd, const struct sockaddr *__addr, socklen_t __len)
 
 int my_send(int __fd, const void *__buf, size_t __n, int __flags)
 {
-    int send_status = send(__fd, __buf, __n, __flags);
-    if (send_status < 0)
-    {
-        perror("Error sending message");
-        exit(1);
-    }
-    return send_status;
+    // if Send_Message is full, sleep and check again
+    // else, push (__fd, message) to Send_Message
 }
 
 int my_recv(int __fd, void *__buf, size_t __n, int __flags)
 {
-    int recv_status = recv(__fd, __buf, __n, __flags);
-    if (recv_status < 0)
-    {
-        perror("Error receiving message");
-        exit(1);
-    }
-    return recv_status;
+    // if Receive_Message is empty, sleep and check again
+    // else, insert (__fd, NULL), wait for NULL to be non-NULL, retrieve the message from there
 }
 
 int my_close(int __fd)
 {
+    sleep(5); // As instructed by AG
+
+    pthread_cancel(sender);
+    pthread_join(sender, NULL);
+    pthread_cancel(receiver);
+    pthread_join(receiver, NULL);
+
     dealloc_buffer(&Send_Message);
     dealloc_buffer(&Received_Message);
+
     int close_status = close(__fd);
     if (close_status < 0)
     {
@@ -119,10 +117,24 @@ int my_close(int __fd)
 
 void *send_routine()
 {
+    while(1)
+    {
+        sleep(SEND_ROUTINE_TIMEOUT);
+        // check if any (__fd, message) exists [wait on condition]
+        // chunk message into MAX_SEND_SIZE and send() until done
+        pthread_testcancel();
+    }
 }
 
 void *receive_routine()
 {
+    while(1)
+    {
+        // check for (__fd, NULL) [wait on condition]
+        // recv() with the socket __fd until done
+        // aggregate full message and update the tuple with the message
+        pthread_testcancel();
+    }
 }
 
 void init_buffer(BUFFER **buffer)

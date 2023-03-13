@@ -24,10 +24,12 @@
 // 0 so that it does not conflict with the other types
 #define SOCK_MyTCP 0
 #define MAX_BUFFER_SIZE 10
+#define MAX_SEND_SIZE 1000
 #define MAX_MESSAGE_SIZE 5000
+#define SEND_ROUTINE_TIMEOUT 1
 
 // Buffer struct (circular queue)
-typedef struct _BUFFER
+typedef struct _BUFFER // need to update: associate each message with a sockfd
 {
     char **list;
     int size;
