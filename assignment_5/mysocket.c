@@ -1,5 +1,13 @@
 #include "mysocket.h"
 
+/*
+    CS39006 - Networks Laboratory, Spring Semester 2022-2023
+    Assignment No: 5
+    Group No: 16
+    Members: Ashwani Kumar Kamal (20CS10011), Kartik Pontula (20CS10031)
+    Program Synopsis: Message oriented TCP implementation library.
+*/
+
 pthread_t sender, receiver;
 BUFFER *Send_Message;
 BUFFER *Received_Message;
@@ -126,4 +134,33 @@ void init_buffer(BUFFER **buffer)
     (*buffer)->size = 10;
     (*buffer)->head = -1;
     (*buffer)->tail = -1;
+}
+
+void enqueue(BUFFER *buffer, char *message)
+{
+    if (buffer->head == -1)
+    {
+        buffer->head = 0;
+        buffer->tail = 0;
+    }
+    else
+        buffer->tail = (buffer->tail + 1) % buffer->size;
+
+    strcpy(buffer->list[buffer->tail], message);
+}
+
+char *dequeue(BUFFER *buffer)
+{
+    char *message = (char *)malloc(sizeof(char) * MAX_MESSAGE_SIZE);
+    strcpy(message, buffer->list[buffer->head]);
+
+    if (buffer->head == buffer->tail)
+    {
+        buffer->head = -1;
+        buffer->tail = -1;
+    }
+    else
+        buffer->head = (buffer->head + 1) % buffer->size;
+
+    return message;
 }
