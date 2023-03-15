@@ -26,7 +26,7 @@ This content is intended to be used and must be used for informational purposes 
 
 >Half submission is any day better than plagiarised submission.
 
-All the pieces of code present in this repository are completely original to me. User discretion is advised before copying / referencing the codes.
+All the pieces of code present in this repository are completely original to me or [Kartik Pontula](https://github.com/alutnopk) who happens to be my lab partner in this course. User discretion is advised before copying / referencing the codes.
 
 ### No guarantee
 

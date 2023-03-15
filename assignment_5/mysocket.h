@@ -27,12 +27,14 @@
 #define MAX_SEND_SIZE 1000
 #define MAX_MESSAGE_SIZE 5000
 #define SEND_ROUTINE_TIMEOUT 1
+#define RECEIVE_CALL_TIMEOUT 1
 
 typedef struct _Message
 {
     char msg[MAX_MESSAGE_SIZE]; // the idea of using another pointer here gives me a permanent headache
     int msglen;
     int sockfd;
+    int flags;
 } Message;
 
 // Buffer struct (circular queue)
@@ -61,7 +63,7 @@ void *send_routine();
 void *receive_routine();
 void init_buffer(BUFFER **buffer);
 void dealloc_buffer(BUFFER **buffer);
-void enqueue(BUFFER *buffer, char *message, int msglen, int sockfd);
+void enqueue(BUFFER *buffer, char *message, int msglen, int sockfd, int flags);
 Message *dequeue(BUFFER *buffer);
 
 #endif
