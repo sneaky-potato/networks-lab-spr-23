@@ -121,7 +121,7 @@ void *send_routine()
     {
         sleep(SEND_ROUTINE_TIMEOUT);
         // check if any (__fd, message) exists [wait on condition]
-        // chunk message into MAX_SEND_SIZE and send() until done
+        // dequeue and chunk message into MAX_SEND_SIZE and send() until done
         pthread_testcancel();
     }
 }
@@ -140,10 +140,10 @@ void *receive_routine()
 void init_buffer(BUFFER **buffer)
 {
     *buffer = (BUFFER *)malloc(sizeof(BUFFER));
-    (*buffer)->list = (char **)malloc(sizeof(char *) * MAX_BUFFER_SIZE);
+    (*buffer)->list = (Message **)malloc(sizeof(Message *) * MAX_BUFFER_SIZE);
 
     for (int i = 0; i < MAX_BUFFER_SIZE; i++)
-        (*buffer)->list[i] = (char *)malloc(sizeof(char) * MAX_MESSAGE_SIZE);
+        (*buffer)->list[i] = (Message *)malloc(sizeof(Message));
 
     (*buffer)->size = 10;
     (*buffer)->head = -1;
@@ -152,17 +152,16 @@ void init_buffer(BUFFER **buffer)
 
 void dealloc_buffer(BUFFER **buffer)
 {
-    free((*buffer)->size);
-    free((*buffer)->head);
-    free((*buffer)->tail);
     for (int i = 0; i < MAX_BUFFER_SIZE; i++)
         free((*buffer)->list[i]);
     free((*buffer)->list);
     free((*buffer));
 }
 
-void enqueue(BUFFER *buffer, char *message)
+void enqueue(BUFFER *buffer, char *message, int msglen, int sockfd)
 {
+    // alloc the message
+    
     if (buffer->head == -1)
     {
         buffer->head = 0;
@@ -170,15 +169,19 @@ void enqueue(BUFFER *buffer, char *message)
     }
     else
         buffer->tail = (buffer->tail + 1) % buffer->size;
-
-    strcpy(buffer->list[buffer->tail], message);
+    
+    // strcpy(buffer->list[buffer->tail], message) // is bad
+    Message* msgptr = (Message*)malloc(sizeof(Message));
+    memmove(msgptr->msg, message, msglen);
+    msgptr->msglen = msglen;
+    msgptr->sockfd = sockfd;
+    buffer->list[buffer->tail] = msgptr;
 }
 
-char *dequeue(BUFFER *buffer)
+Message *dequeue(BUFFER *buffer)
 {
-    char *message = (char *)malloc(sizeof(char) * MAX_MESSAGE_SIZE);
-    strcpy(message, buffer->list[buffer->head]);
-
+    Message* msgptr = buffer->list[buffer->head];
+    // buffer->list[buffer->head] = NULL;
     if (buffer->head == buffer->tail)
     {
         buffer->head = -1;
@@ -187,5 +190,5 @@ char *dequeue(BUFFER *buffer)
     else
         buffer->head = (buffer->head + 1) % buffer->size;
 
-    return message;
+    return msgptr;
 }

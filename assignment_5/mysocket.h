@@ -28,10 +28,17 @@
 #define MAX_MESSAGE_SIZE 5000
 #define SEND_ROUTINE_TIMEOUT 1
 
+typedef struct _Message
+{
+    char msg[MAX_MESSAGE_SIZE]; // the idea of using another pointer here gives me a permanent headache
+    int msglen;
+    int sockfd;
+} Message;
+
 // Buffer struct (circular queue)
 typedef struct _BUFFER // need to update: associate each message with a sockfd
 {
-    char **list;
+    Message **list;
     int size;
     int head;
     int tail;
@@ -54,7 +61,7 @@ void *send_routine();
 void *receive_routine();
 void init_buffer(BUFFER **buffer);
 void dealloc_buffer(BUFFER **buffer);
-void enqueue(BUFFER *buffer, char *message);
-char *dequeue(BUFFER *buffer);
+void enqueue(BUFFER *buffer, char *message, int msglen, int sockfd);
+Message *dequeue(BUFFER *buffer);
 
 #endif
