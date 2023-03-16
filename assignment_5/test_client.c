@@ -33,8 +33,9 @@ int main(int argc, char *argv[])
 
     printf("Connected to server\n");
 
-    printf("Enter expression: ");
-    scanf("%s", buf);
+    // printf("Enter expression: ");
+    // scanf("%s", buf);
+    memset(buf, 1, 100);
 
     my_send(sockfd, buf, 100, 0);
     my_recv(sockfd, result, 100, 0);

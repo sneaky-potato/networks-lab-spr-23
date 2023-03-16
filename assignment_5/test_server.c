@@ -1,6 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "mysocket.h"
+#include <signal.h>
+
+int newsockfd;
+// void ctrlc_handler(int signum) // signal handler to be executed upon Ctrl+C
+// {
+//     my_close(newsockfd);
+//     exit(EXIT_SUCCESS);
+// }
 
 int main(int argc, char *argv[])
 {
@@ -9,10 +17,11 @@ int main(int argc, char *argv[])
         printf("Supply port number as command line argument\n");
         exit(EXIT_FAILURE);
     }
-
     int PORT = atoi(argv[1]);
 
-    int sockfd, newsockfd;
+    // signal(SIGINT, &ctrlc_handler);
+
+    int sockfd;
     int clilen;
     struct sockaddr_in cli_addr, serv_addr;
 
@@ -36,6 +45,7 @@ int main(int argc, char *argv[])
     while (1)
     {
         // Accept connection from client
+        printf("Waiting to accept a client...\n");
         clilen = sizeof(cli_addr);
         newsockfd = my_accept(sockfd, (struct sockaddr *)&cli_addr, &clilen);
 
