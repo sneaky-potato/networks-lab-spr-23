@@ -1,5 +1,3 @@
-#include "mysocket.h"
-
 /*
     CS39006 - Networks Laboratory, Spring Semester 2022-2023
     Assignment No: 5
@@ -7,6 +5,8 @@
     Members: Ashwani Kumar Kamal (20CS10011), Kartik Pontula (20CS10031)
     Program Synopsis: Message oriented TCP implementation library.
 */
+
+#include "mysocket.h"
 
 pthread_t sender, receiver;
 pthread_mutex_t mutex_send;
@@ -18,6 +18,9 @@ pthread_cond_t cond_recv_empty;
 
 BUFFER *Send_Message;
 BUFFER *Received_Message;
+
+int global_sockfd = -1, global_flags = -1;
+// TODO: add mutex locks to set global_sockfd
 
 int my_socket(int __domain, int __type, int __protocol)
 {
@@ -83,6 +86,10 @@ int my_accept(int __fd, struct sockaddr *__addr, socklen_t *__restrict __addr_le
         perror("Error accepting connection");
         exit(1);
     }
+
+    global_sockfd = accept_status;
+    global_flags = 0;
+
     return accept_status;
 }
 
@@ -94,39 +101,62 @@ int my_connect(int __fd, const struct sockaddr *__addr, socklen_t __len)
         perror("Error connecting to server");
         exit(1);
     }
+
+    global_sockfd = connect_status;
+    global_flags = 0;
+
     return connect_status;
 }
 
 int my_send(int __fd, const void *__buf, size_t __n, int __flags)
 {
-    pthread_mutex_lock(&mutex_send);
+    if(__fd != global_sockfd)
+    {
+        perror("Error: Socket has no connection");
+        exit(EXIT_FAILURE);
+    }
+    global_flags = __flags;
 
+    /* TODO: decide whether this should be done instead
+    while(Send_Message->size == MAX_BUFFER_SIZE)
+    {
+        sleep(MYSEND_CALL_TIMEOUT);
+    }
+    */
+    pthread_mutex_lock(&mutex_send);
     while (Send_Message->size == MAX_BUFFER_SIZE)
     {
         pthread_cond_wait(&cond_send_full, &mutex_send);
     }
 
-    enqueue(Send_Message, __buf, __n, __fd, __flags);
+    enqueue(Send_Message, __buf, __n);
     pthread_mutex_unlock(&mutex_send);
     pthread_cond_signal(&cond_send_empty);
 
-    return 1;
+    return __n;
 }
 
 int my_recv(int __fd, void *__buf, size_t __n, int __flags)
 {
+    if(__fd != global_sockfd)
+    {
+        perror("Error: Socket has no connection");
+        exit(EXIT_FAILURE);
+    }
+    global_flags = __flags; // but R has already run recv without these flags xD
+
+    // push msgptr to buffer
+
+    // TODO: decide whether to sleep & repeat or cond_wait
     while (Received_Message->size == 0)
     {
-        sleep(RECEIVE_CALL_TIMEOUT);
+        sleep(MYRECV_CALL_TIMEOUT);
     }
 
     Message *msgptr = dequeue(&Received_Message);
-
-    // enqueue empty message with __fd and __flags
-    enqueue(Received_Message, NULL, 0, __fd, __flags);
-
-    // if Receive_Message is empty, sleep and check again
-    // else, insert (__fd, NULL), wait for NULL to be non-NULL, retrieve the message from there
+    // add code here to store msg into buf
+    
+    return 1; // TODO: return a global retval
 }
 
 int my_close(int __fd)
@@ -154,10 +184,8 @@ void *send_routine()
 {
     while (1)
     {
-        sleep(SEND_ROUTINE_TIMEOUT);
-
         pthread_mutex_lock(&mutex_send);
-        while (Send_Message->size == 0)
+        while (Send_Message->size == 0) // S will stay blocked until my_send is run
         {
             pthread_cond_wait(&cond_send_empty, &mutex_send);
         }
@@ -166,9 +194,9 @@ void *send_routine()
         pthread_mutex_unlock(&mutex_send);
         pthread_cond_signal(&cond_send_full);
 
-        int sockfd = msgptr->sockfd;
-        int flags = msgptr->flags;
         int msglen = msgptr->msglen;
+        int sockfd = global_sockfd;
+        int flags = global_flags;
 
         char *buf = (char *)malloc(sizeof(char) * (msglen + sizeof(int)));
         // prepend the message length to the message
@@ -184,15 +212,27 @@ void *send_routine()
                 continue;
             nsend += bytes_sent;
         }
-
-        // check if any (__fd, message) exists [wait on condition]
-        // dequeue and chunk message into MAX_SEND_SIZE and send() until done
         pthread_testcancel();
+        sleep(SEND_ROUTINE_TIMEOUT);
+        // TODO: set global return value, useful for debugging
     }
 }
 
 void *receive_routine()
 {
+    /* brief and vague pseudocode:
+    wait while global_sockfd is -1
+    now enter loop
+    try running recv
+    if returns 0, try again
+    basically acquire whatever is being sent, of size msglen
+    acquire msglen, keep running recv only till that len, discard all else (think about pseudocode here)
+    package msg
+    push to buffer
+    */
+
+    // TODO: use cond_wait instead
+    while(global_sockfd == -1);
     while (1)
     {
         pthread_mutex_lock(&mutex_recv);
@@ -202,10 +242,6 @@ void *receive_routine()
         }
         pthread_mutex_unlock(&mutex_recv);
         pthread_cond_signal(&cond_recv_empty);
-
-        // check for (__fd, NULL) [wait on condition]
-        // recv() with the socket __fd until done
-        // aggregate full message and update the tuple with the message
         pthread_testcancel();
     }
 }
@@ -231,10 +267,8 @@ void dealloc_buffer(BUFFER **buffer)
     free((*buffer));
 }
 
-void enqueue(BUFFER *buffer, char *message, int msglen, int sockfd, int flags)
+void enqueue(BUFFER *buffer, char *message, int msglen)
 {
-    // alloc the message
-
     if (buffer->head == -1)
     {
         buffer->head = 0;
@@ -243,12 +277,9 @@ void enqueue(BUFFER *buffer, char *message, int msglen, int sockfd, int flags)
     else
         buffer->tail = (buffer->tail + 1) % buffer->size;
 
-    // strcpy(buffer->list[buffer->tail], message) // is bad
     Message *msgptr = (Message *)malloc(sizeof(Message));
     memmove(msgptr->msg, message, msglen);
     msgptr->msglen = msglen;
-    msgptr->sockfd = sockfd;
-    msgptr->flags = flags;
     buffer->list[buffer->tail] = msgptr;
 }
 

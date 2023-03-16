@@ -1,3 +1,11 @@
+/*
+    CS39006 - Networks Laboratory, Spring Semester 2022-2023
+    Assignment No: 5
+    Group No: 16
+    Members: Ashwani Kumar Kamal (20CS10011), Kartik Pontula (20CS10031)
+    Program Synopsis: Headers and definitions for Message oriented TCP library.
+*/
+
 #ifndef __MYSOCKET_H
 #define __MYSOCKET_H
 
@@ -13,32 +21,24 @@
 #include <pthread.h>
 #include <ctype.h>
 
-/*
-    CS39006 - Networks Laboratory, Spring Semester 2022-2023
-    Assignment No: 5
-    Group No: 16
-    Members: Ashwani Kumar Kamal (20CS10011), Kartik Pontula (20CS10031)
-    Program Synopsis: Headers and definitions for Message oriented TCP library.
-*/
-
 // 0 so that it does not conflict with the other types
 #define SOCK_MyTCP 0
 #define MAX_BUFFER_SIZE 10
 #define MAX_SEND_SIZE 1000
 #define MAX_MESSAGE_SIZE 5000
 #define SEND_ROUTINE_TIMEOUT 1
-#define RECEIVE_CALL_TIMEOUT 1
+#define MYSEND_CALL_TIMEOUT 1
+#define MYRECV_CALL_TIMEOUT 1
 
+// Message struct
 typedef struct _Message
 {
-    char msg[MAX_MESSAGE_SIZE]; // the idea of using another pointer here gives me a permanent headache
+    char msg[MAX_MESSAGE_SIZE];
     int msglen;
-    int sockfd;
-    int flags;
 } Message;
 
 // Buffer struct (circular queue)
-typedef struct _BUFFER // need to update: associate each message with a sockfd
+typedef struct _BUFFER
 {
     Message **list;
     int size;
@@ -63,7 +63,7 @@ void *send_routine();
 void *receive_routine();
 void init_buffer(BUFFER **buffer);
 void dealloc_buffer(BUFFER **buffer);
-void enqueue(BUFFER *buffer, char *message, int msglen, int sockfd, int flags);
+void enqueue(BUFFER *buffer, char *message, int msglen);
 Message *dequeue(BUFFER *buffer);
 
 #endif
