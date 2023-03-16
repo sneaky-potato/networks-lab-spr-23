@@ -11,16 +11,18 @@
 pthread_t sender, receiver;
 pthread_mutex_t mutex_send;
 pthread_mutex_t mutex_recv;
+pthread_mutex_t mutex_sockfd;
 pthread_cond_t cond_send_full;
 pthread_cond_t cond_send_empty;
 pthread_cond_t cond_recv_full;
 pthread_cond_t cond_recv_empty;
+pthread_cond_t cond_sockfd;
 
 BUFFER *Send_Message;
 BUFFER *Received_Message;
 
-int global_sockfd = -1, global_flags = -1;
-// TODO: add mutex locks to set global_sockfd
+int global_sockfd = -1, global_flags = 0;
+int ret_send = -1, ret_recv = -1;
 
 int my_socket(int __domain, int __type, int __protocol)
 {
@@ -36,11 +38,13 @@ int my_socket(int __domain, int __type, int __protocol)
 
     pthread_mutex_init(&mutex_send, NULL);
     pthread_mutex_init(&mutex_recv, NULL);
+    pthread_mutex_init(&mutex_sockfd, NULL);
 
     pthread_cond_init(&cond_send_empty, NULL);
     pthread_cond_init(&cond_send_full, NULL);
     pthread_cond_init(&cond_recv_empty, NULL);
     pthread_cond_init(&cond_recv_full, NULL);
+    pthread_cond_init(&cond_sockfd, NULL);
 
     // Creating the threads
     pthread_create(&sender, NULL, send_routine, NULL);
@@ -87,8 +91,11 @@ int my_accept(int __fd, struct sockaddr *__addr, socklen_t *__restrict __addr_le
         exit(1);
     }
 
+    pthread_mutex_lock(&mutex_sockfd);
     global_sockfd = accept_status;
     global_flags = 0;
+    pthread_mutex_unlock(&mutex_sockfd);
+    pthread_mutex_signal(&cond_sockfd);
 
     return accept_status;
 }
@@ -102,8 +109,11 @@ int my_connect(int __fd, const struct sockaddr *__addr, socklen_t __len)
         exit(1);
     }
 
+    pthread_mutex_lock(&mutex_sockfd);
     global_sockfd = connect_status;
     global_flags = 0;
+    pthread_mutex_unlock(&mutex_sockfd);
+    pthread_mutex_signal(&cond_sockfd);
 
     return connect_status;
 }
@@ -145,23 +155,25 @@ int my_recv(int __fd, void *__buf, size_t __n, int __flags)
     }
     global_flags = __flags; // but R has already run recv without these flags xD
 
-    // push msgptr to buffer
-
     // TODO: decide whether to sleep & repeat or cond_wait
     while (Received_Message->size == 0)
     {
         sleep(MYRECV_CALL_TIMEOUT);
     }
 
-    Message *msgptr = dequeue(&Received_Message);
+    Message *msgptr = dequeue(Received_Message);
     // add code here to store msg into buf
-    
-    return 1; // TODO: return a global retval
+    // handle cases where msgptr->msglen > __n etc
+    return 1;
 }
 
 int my_close(int __fd)
 {
-    sleep(5); // As instructed by AG
+    // sleep(5); // As instructed by AG
+
+    pthread_mutex_lock(&mutex_sockfd);
+    global_sockfd = -1;
+    pthread_mutex_unlock(&mutex_sockfd);
 
     pthread_cancel(sender);
     pthread_join(sender, NULL);
@@ -184,13 +196,16 @@ void *send_routine()
 {
     while (1)
     {
+        pthread_mutex_lock(&mutex_sockfd);
+        while(global_sockfd == -1)
+            pthread_cond_wait(&cond_sockfd, &mutex_sockfd);
+        pthread_mutex_unlock(&mutex_sockfd);
+
         pthread_mutex_lock(&mutex_send);
         while (Send_Message->size == 0) // S will stay blocked until my_send is run
-        {
             pthread_cond_wait(&cond_send_empty, &mutex_send);
-        }
 
-        Message *msgptr = dequeue(&Send_Message);
+        Message *msgptr = dequeue(Send_Message);
         pthread_mutex_unlock(&mutex_send);
         pthread_cond_signal(&cond_send_full);
 
@@ -212,17 +227,17 @@ void *send_routine()
                 continue;
             nsend += bytes_sent;
         }
+        ret_send = nsend;
         pthread_testcancel();
         sleep(SEND_ROUTINE_TIMEOUT);
-        // TODO: set global return value, useful for debugging
+
     }
 }
 
 void *receive_routine()
 {
     /* brief and vague pseudocode:
-    wait while global_sockfd is -1
-    now enter loop
+    wait while global_sockfd is -1 DONE
     try running recv
     if returns 0, try again
     basically acquire whatever is being sent, of size msglen
@@ -232,16 +247,27 @@ void *receive_routine()
     */
 
     // TODO: use cond_wait instead
-    while(global_sockfd == -1);
     while (1)
     {
+        pthread_mutex_lock(&mutex_sockfd);
+        while(global_sockfd == -1)
+            pthread_cond_wait(&cond_sockfd, &mutex_sockfd);
+        pthread_mutex_unlock(&mutex_sockfd);
+
+        // insert big brain recv'ing code here
+        char* msg = NULL;
+        int msglen = -1;
+
         pthread_mutex_lock(&mutex_recv);
         while (Received_Message->size == MAX_BUFFER_SIZE)
         {
             pthread_cond_wait(&cond_recv_full, &mutex_recv);
         }
         pthread_mutex_unlock(&mutex_recv);
+        enqueue(Received_Message, msg, msglen);
         pthread_cond_signal(&cond_recv_empty);
+
+        // ret_recv = // TODO: global retval
         pthread_testcancel();
     }
 }
