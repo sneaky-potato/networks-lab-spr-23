@@ -42,19 +42,14 @@ int main(int argc, char *argv[])
 
     printf("Server running on port: %d\nWaiting for incoming connections...\n", PORT);
 
-    while (1)
-    {
-        // Accept connection from client
-        printf("Waiting to accept a client...\n");
-        clilen = sizeof(cli_addr);
-        newsockfd = my_accept(sockfd, (struct sockaddr *)&cli_addr, &clilen);
+    // Accept connection from client
+    printf("Waiting to accept a client...\n");
+    clilen = sizeof(cli_addr);
+    newsockfd = my_accept(sockfd, (struct sockaddr *)&cli_addr, &clilen);
 
-        my_recv(newsockfd, buf, 100, 0);
-        printf("Received: %s\n", buf);
-        my_send(newsockfd, buf, 100, 0);
-
-        my_close(newsockfd);
-    }
+    my_recv(newsockfd, buf, 100, 0);
+    printf("Received: %s\n", buf);
+    my_send(newsockfd, buf, strlen(buf) + 1, 0);
 
     my_close(sockfd);
     return 0;

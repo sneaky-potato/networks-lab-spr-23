@@ -35,12 +35,12 @@ int main(int argc, char *argv[])
 
     // printf("Enter expression: ");
     // scanf("%s", buf);
-    memset(buf, 1, 100);
+    // memset(buf, 1, 100);
+    strcpy(buf, "test_mesg");
 
-    my_send(sockfd, buf, 100, 0);
+    my_send(sockfd, buf, strlen(buf) + 1, 0);
     my_recv(sockfd, result, 100, 0);
     printf("Result: %s", result);
-
     my_close(sockfd);
 
     return 0;

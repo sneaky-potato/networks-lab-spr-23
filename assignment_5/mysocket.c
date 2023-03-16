@@ -29,21 +29,23 @@ int min(int a, int b) { return (a < b) ? a : b; }
 int my_socket(int __domain, int __type, int __protocol)
 {
     if (__type != SOCK_MyTCP)
-    { 
+    {
         perror("Error: Only SOCK_MyTCP is supported");
         exit(EXIT_FAILURE);
     }
     // Initialization
-    if(!Send_Message)
-        init_buffer(Send_Message);
-    if(!Received_Message)
-        init_buffer(Received_Message);
+    if (!Send_Message)
+        init_buffer(&Send_Message);
+    if (!Received_Message)
+        init_buffer(&Received_Message);
 
     // Thread creation
-    if(!sender)
-        if(pthread_create(&sender, NULL, send_routine, NULL) != 0) printf("Debug: S creation failed\n");
-    if(!receiver)
-        if(pthread_create(&receiver, NULL, receive_routine, NULL) != 0) printf("Debug: R creation failed\n");
+    if (!sender)
+        if (pthread_create(&sender, NULL, send_routine, NULL) != 0)
+            printf("Debug: S creation failed\n");
+    if (!receiver)
+        if (pthread_create(&receiver, NULL, receive_routine, NULL) != 0)
+            printf("Debug: R creation failed\n");
 
     printf("Debug: S and R created\n");
     // Socket creation
@@ -121,7 +123,7 @@ int my_connect(int __fd, const struct sockaddr *__addr, socklen_t __len)
 int my_send(int __fd, const void *__buf, size_t __n, int __flags)
 {
     printf("Debug: Inside my_send()\n");
-    if(__fd != global_sockfd)
+    if (__fd != global_sockfd)
     {
         perror("Error: my_send() socket has no connection");
         exit(EXIT_FAILURE);
@@ -146,7 +148,7 @@ int my_send(int __fd, const void *__buf, size_t __n, int __flags)
 int my_recv(int __fd, void *__buf, size_t __n, int __flags)
 {
     printf("Debug: Inside my_recv()\n");
-    if(__fd != global_sockfd)
+    if (__fd != global_sockfd)
     {
         perror("Error: my_recv() socket has no connection");
         exit(EXIT_FAILURE);
@@ -156,10 +158,13 @@ int my_recv(int __fd, void *__buf, size_t __n, int __flags)
     global_flags = __flags; // but R has already run recv without these flags xD
 
     // TODO: replace this dumb shit with cond_wait
+    if (!Received_Message)
+        printf("NULL\n");
     printf("Debug: my_recv lock begins\n");
     pthread_mutex_lock(&mutex_recv);
     while (Received_Message->size == 0)
     {
+        printf("Debug: wait for empty\n");
         pthread_cond_wait(&cond_recv_empty, &mutex_recv);
     }
     Message *msgptr = dequeue(Received_Message);
@@ -176,7 +181,7 @@ int my_recv(int __fd, void *__buf, size_t __n, int __flags)
 
 int my_close(int __fd)
 {
-    // sleep(5); // As instructed by AG
+    sleep(5); // As instructed by AG
 
     pthread_mutex_lock(&mutex_sockfd);
     global_sockfd = -1;
@@ -189,9 +194,9 @@ int my_close(int __fd)
     pthread_join(receiver, NULL);
     printf("Debug: R terminated\n");
 
-    if(Send_Message)
+    if (Send_Message)
         dealloc_buffer(Send_Message);
-    if(Received_Message)
+    if (Received_Message)
         dealloc_buffer(Received_Message);
     printf("Buffers dealloced\n");
 
@@ -212,7 +217,7 @@ void *send_routine()
     {
         printf("S: Waiting for valid global_sockfd\n");
         // pthread_mutex_lock(&mutex_sockfd);
-        while(global_sockfd == -1)
+        while (global_sockfd == -1)
         {
             // pthread_cond_wait(&cond_sockfd, &mutex_sockfd);
             sleep(SEND_ROUTINE_TIMEOUT);
@@ -238,7 +243,7 @@ void *send_routine()
         free(msgptr);
         printf("S: Beginning to call send()\n");
         // TODO: perhaps consider placing start and end markers around msglen
-        if(send(sockfd, &(msglen), sizeof(int), flags) != sizeof(int))
+        if (send(sockfd, &(msglen), sizeof(int), flags) != sizeof(int))
             printf("Couldn't send msglen in one call\n");
         printf("S: Sent msglen\n");
         int nsend = 0;
@@ -253,7 +258,6 @@ void *send_routine()
         printf("S: Sent total %d bytes, will sleep now\n", nsend);
         pthread_testcancel();
         sleep(SEND_ROUTINE_TIMEOUT);
-
     }
 }
 
@@ -262,9 +266,9 @@ void *receive_routine()
     char *buf = (char *)malloc(sizeof(char) * MAX_BUFFER_SIZE);
     while (1)
     {
-        printf("R: Waiting for valid global_sockfd\n");
+        // printf("R: Waiting for valid global_sockfd\n");
         // pthread_mutex_lock(&mutex_sockfd);
-        while(global_sockfd == -1)
+        while (global_sockfd == -1)
         {
             // pthread_cond_wait(&cond_sockfd, &mutex_sockfd);
             sleep(RECV_ROUTINE_TIMEOUT);
@@ -273,11 +277,11 @@ void *receive_routine()
         // inelegant again
         int sockfd = global_sockfd;
         int flags = global_flags;
-        printf("R: Connected socket detected\n");
-        printf("R: Beginning to call recv()\n");
         int msglen = -1;
-        if(recv(sockfd, &(msglen), sizeof(int), flags) != sizeof(int))
-            printf("Couldn't receive msglen in one call\n");
+        if (recv(sockfd, &(msglen), sizeof(int), flags) != sizeof(int))
+        {
+            continue;
+        }
         printf("R: Received msglen %d\n", msglen);
         memset(buf, 0, MAX_BUFFER_SIZE);
         int nrecv = 0;
@@ -285,7 +289,7 @@ void *receive_routine()
         {
             int bytes_recved = recv(sockfd, buf + nrecv, min(MAX_CHUNK_SIZE, msglen - nrecv), flags);
             printf("R: Received %d bytes\n", bytes_recved);
-            if (bytes_recved == -1) 
+            if (bytes_recved == -1)
                 continue;
             nrecv += bytes_recved;
         }
@@ -296,6 +300,7 @@ void *receive_routine()
         {
             pthread_cond_wait(&cond_recv_full, &mutex_recv);
         }
+        printf("recv result = %s\n", buf);
         enqueue(Received_Message, buf, msglen);
         pthread_mutex_unlock(&mutex_recv);
         pthread_cond_signal(&cond_recv_empty);
@@ -304,24 +309,26 @@ void *receive_routine()
     }
 }
 
-void init_buffer(BUFFER *buffer)
+void init_buffer(BUFFER **buffer)
 {
-    buffer = (BUFFER *)malloc(sizeof(BUFFER));
+    *buffer = (BUFFER *)malloc(sizeof(BUFFER));
     printf("Debug: init malloc 1\n");
-    (buffer)->list = (Message **)malloc(sizeof(Message *) * MAX_BUFFER_SIZE);
+    (*buffer)->list = (Message **)malloc(sizeof(Message *) * MAX_BUFFER_SIZE);
     printf("Debug: init malloc 2\n");
     for (int i = 0; i < MAX_BUFFER_SIZE; i++)
-        (buffer)->list[i] = (Message *)malloc(sizeof(Message));
+        (*buffer)->list[i] = (Message *)malloc(sizeof(Message));
     printf("Debug: init malloc 3\n");
-    (buffer)->size = 10;
-    (buffer)->head = -1;
-    (buffer)->tail = -1;
+    (*buffer)->size = 0;
+    (*buffer)->head = -1;
+    (*buffer)->tail = -1;
 }
 
 void dealloc_buffer(BUFFER *buffer)
 {
-    for (int i = 0; i < MAX_BUFFER_SIZE; i++)
-        free((buffer)->list[i]);
+    for (int i = 0; i < buffer->size; i++)
+    {
+        free((buffer)->list[(i + buffer->head) % MAX_BUFFER_SIZE]);
+    }
     printf("Debug: dealloc 1\n");
     free((buffer)->list);
     printf("Debug: dealloc 2\n");
@@ -340,11 +347,13 @@ void enqueue(BUFFER *buffer, const char *message, int msglen)
     else
         buffer->tail = (buffer->tail + 1) % buffer->size;
     printf("Debug: enqueue fine upto now\n");
-    Message *msgptr = (Message *)malloc(sizeof(Message));
+    Message *msgptr;
+    msgptr = (Message *)malloc(sizeof(Message));
     printf("Debug: enqueue malloc success\n");
     memmove(msgptr->msg, message, msglen);
     msgptr->msglen = msglen;
     buffer->list[buffer->tail] = msgptr;
+    buffer->size++;
     printf("Debug: enqueue done\n");
 }
 
@@ -360,5 +369,6 @@ Message *dequeue(BUFFER *buffer)
     else
         buffer->head = (buffer->head + 1) % buffer->size;
 
+    buffer->size--;
     return msgptr;
 }

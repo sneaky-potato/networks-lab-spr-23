@@ -64,10 +64,9 @@ int my_close(int __fd);
 
 void *send_routine();
 void *receive_routine();
-void init_buffer(BUFFER *buffer);
+void init_buffer(BUFFER **buffer);
 void dealloc_buffer(BUFFER *buffer);
 void enqueue(BUFFER *buffer, const char *message, int msglen);
 Message *dequeue(BUFFER *buffer);
-
 
 #endif
