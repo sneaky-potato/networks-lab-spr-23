@@ -24,7 +24,7 @@
 // 0 so that it does not conflict with the other types
 #define SOCK_MyTCP 0
 #define MAX_BUFFER_SIZE 10
-#define MAX_SEND_SIZE 1000
+#define MAX_CHUNK_SIZE 1000
 #define MAX_MESSAGE_SIZE 5000
 #define SEND_ROUTINE_TIMEOUT 1
 #define MYSEND_CALL_TIMEOUT 1
@@ -59,11 +59,13 @@ int my_recv(int __fd, void *__buf, size_t __n, int __flags);
 int my_close(int __fd);
 
 // Helper functions
+inline int min(int a, int b);
 void *send_routine();
 void *receive_routine();
 void init_buffer(BUFFER **buffer);
 void dealloc_buffer(BUFFER **buffer);
-void enqueue(BUFFER *buffer, char *message, int msglen);
+void enqueue(BUFFER *buffer, const char *message, int msglen);
 Message *dequeue(BUFFER *buffer);
+
 
 #endif

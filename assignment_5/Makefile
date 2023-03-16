@@ -1,6 +1,6 @@
 # Makefile variables
 CC = gcc
-CFLAGS = -Wall
+CFLAGS = -Wall -Wextra
 RM = rm -f
 TARGET_LIB = libmsocket.a
 MAIN = mysocket.c

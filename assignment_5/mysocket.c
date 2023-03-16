@@ -22,12 +22,11 @@ BUFFER *Send_Message;
 BUFFER *Received_Message;
 
 int global_sockfd = -1, global_flags = 0;
-int ret_send = -1, ret_recv = -1;
 
 int my_socket(int __domain, int __type, int __protocol)
 {
     if (__type != SOCK_MyTCP)
-    {
+    { 
         perror("Error: Only SOCK_MyTCP is supported");
         exit(EXIT_FAILURE);
     }
@@ -95,7 +94,7 @@ int my_accept(int __fd, struct sockaddr *__addr, socklen_t *__restrict __addr_le
     global_sockfd = accept_status;
     global_flags = 0;
     pthread_mutex_unlock(&mutex_sockfd);
-    pthread_mutex_signal(&cond_sockfd);
+    pthread_cond_signal(&cond_sockfd);
 
     return accept_status;
 }
@@ -113,7 +112,7 @@ int my_connect(int __fd, const struct sockaddr *__addr, socklen_t __len)
     global_sockfd = connect_status;
     global_flags = 0;
     pthread_mutex_unlock(&mutex_sockfd);
-    pthread_mutex_signal(&cond_sockfd);
+    pthread_cond_signal(&cond_sockfd);
 
     return connect_status;
 }
@@ -126,13 +125,8 @@ int my_send(int __fd, const void *__buf, size_t __n, int __flags)
         exit(EXIT_FAILURE);
     }
     global_flags = __flags;
+    // TODO: add error handling for n > MAX_MESSAGE_SIZE
 
-    /* TODO: decide whether this should be done instead
-    while(Send_Message->size == MAX_BUFFER_SIZE)
-    {
-        sleep(MYSEND_CALL_TIMEOUT);
-    }
-    */
     pthread_mutex_lock(&mutex_send);
     while (Send_Message->size == MAX_BUFFER_SIZE)
     {
@@ -153,18 +147,23 @@ int my_recv(int __fd, void *__buf, size_t __n, int __flags)
         perror("Error: Socket has no connection");
         exit(EXIT_FAILURE);
     }
+    // TODO: add error handling for n > MAX_MESSAGE_SIZE
+
     global_flags = __flags; // but R has already run recv without these flags xD
 
-    // TODO: decide whether to sleep & repeat or cond_wait
+    // TODO: replace this dumb shit with cond_wait
     while (Received_Message->size == 0)
     {
         sleep(MYRECV_CALL_TIMEOUT);
     }
-
+    
     Message *msgptr = dequeue(Received_Message);
-    // add code here to store msg into buf
-    // handle cases where msgptr->msglen > __n etc
-    return 1;
+
+    int msglen = msgptr->msglen;
+    memmove(__buf, msgptr->msg, min(__n, msglen));
+
+    free(msgptr);
+    return min(__n, msglen);
 }
 
 int my_close(int __fd)
@@ -192,42 +191,52 @@ int my_close(int __fd)
     return close_status;
 }
 
+inline int min(int a, int b)
+{
+    return (a < b) ? a : b;
+}
+
 void *send_routine()
 {
+    char *buf = (char *)malloc(sizeof(char) * MAX_BUFFER_SIZE);
     while (1)
     {
         pthread_mutex_lock(&mutex_sockfd);
         while(global_sockfd == -1)
+        {
             pthread_cond_wait(&cond_sockfd, &mutex_sockfd);
+        }
+        int sockfd = global_sockfd;
+        int flags = global_flags;
         pthread_mutex_unlock(&mutex_sockfd);
 
         pthread_mutex_lock(&mutex_send);
         while (Send_Message->size == 0) // S will stay blocked until my_send is run
+        {
             pthread_cond_wait(&cond_send_empty, &mutex_send);
-
+        }
         Message *msgptr = dequeue(Send_Message);
         pthread_mutex_unlock(&mutex_send);
         pthread_cond_signal(&cond_send_full);
 
         int msglen = msgptr->msglen;
-        int sockfd = global_sockfd;
-        int flags = global_flags;
+        memset(buf, 0, MAX_BUFFER_SIZE);
+        memmove(buf, msgptr->msg, msglen);
+        free(msgptr);
 
-        char *buf = (char *)malloc(sizeof(char) * (msglen + sizeof(int)));
-        // prepend the message length to the message
-        memmove(buf, &msglen, sizeof(int));
-        memmove(buf + sizeof(int), msgptr->msg, msglen);
+        // TODO: perhaps consider placing start and end markers around msglen
+        if(send(sockfd, &(msglen), sizeof(int), flags) != sizeof(int))
+            printf("Couldn't send msglen in one call\n");
 
         int nsend = 0;
-
-        while (nsend < msglen + sizeof(int))
+        while (nsend < msglen)
         {
-            int bytes_sent = send(sockfd, buf + nsend, min(MAX_SEND_SIZE, msglen + sizeof(int) - nsend), flags);
+            int bytes_sent = send(sockfd, buf + nsend, min(MAX_CHUNK_SIZE, msglen - nsend), flags);
             if (bytes_sent == -1)
                 continue;
             nsend += bytes_sent;
         }
-        ret_send = nsend;
+        printf("S sent %d bytes\n", nsend);
         pthread_testcancel();
         sleep(SEND_ROUTINE_TIMEOUT);
 
@@ -236,27 +245,31 @@ void *send_routine()
 
 void *receive_routine()
 {
-    /* brief and vague pseudocode:
-    wait while global_sockfd is -1 DONE
-    try running recv
-    if returns 0, try again
-    basically acquire whatever is being sent, of size msglen
-    acquire msglen, keep running recv only till that len, discard all else (think about pseudocode here)
-    package msg
-    push to buffer
-    */
-
-    // TODO: use cond_wait instead
+    char *buf = (char *)malloc(sizeof(char) * MAX_BUFFER_SIZE);
     while (1)
     {
         pthread_mutex_lock(&mutex_sockfd);
         while(global_sockfd == -1)
+        {
             pthread_cond_wait(&cond_sockfd, &mutex_sockfd);
+        }
+        int sockfd = global_sockfd;
+        int flags = global_flags;
         pthread_mutex_unlock(&mutex_sockfd);
 
-        // insert big brain recv'ing code here
-        char* msg = NULL;
         int msglen = -1;
+        if(recv(sockfd, &(msglen), sizeof(int), flags) != sizeof(int))
+            printf("Couldn't receive msglen in one call\n");
+        
+        memset(buf, 0, MAX_BUFFER_SIZE);
+        int nrecv = 0;
+        while (nrecv < msglen)
+        {
+            int bytes_recved = recv(sockfd, buf + nrecv, min(MAX_CHUNK_SIZE, msglen - nrecv), flags);
+            if (bytes_recved == -1) 
+                continue;
+            nrecv += bytes_recved;
+        }
 
         pthread_mutex_lock(&mutex_recv);
         while (Received_Message->size == MAX_BUFFER_SIZE)
@@ -264,10 +277,10 @@ void *receive_routine()
             pthread_cond_wait(&cond_recv_full, &mutex_recv);
         }
         pthread_mutex_unlock(&mutex_recv);
-        enqueue(Received_Message, msg, msglen);
+        enqueue(Received_Message, buf, msglen);
         pthread_cond_signal(&cond_recv_empty);
 
-        // ret_recv = // TODO: global retval
+        printf("R received %d bytes\n", nrecv);
         pthread_testcancel();
     }
 }
@@ -293,7 +306,7 @@ void dealloc_buffer(BUFFER **buffer)
     free((*buffer));
 }
 
-void enqueue(BUFFER *buffer, char *message, int msglen)
+void enqueue(BUFFER *buffer, const char *message, int msglen)
 {
     if (buffer->head == -1)
     {
