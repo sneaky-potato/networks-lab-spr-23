@@ -156,16 +156,15 @@ int my_recv(int __fd, void *__buf, size_t __n, int __flags)
     global_flags = __flags; // but R has already run recv without these flags xD
 
 
-    pthread_mutex_lock(&mutex_send);
-    while (Send_Message->size == MAX_BUFFER_SIZE)
+    pthread_mutex_lock(&mutex_recv);
+    while (Received_Message->size == MAX_BUFFER_SIZE)
     {
-        pthread_cond_wait(&cond_send_full, &mutex_send);
+        pthread_cond_wait(&cond_recv_full, &mutex_recv);
     }
     printf("Debug: this ok?\n");
-    enqueue(Send_Message, __buf, __n);
-    pthread_mutex_unlock(&mutex_send);
-    pthread_cond_signal(&cond_send_empty);
-    // TODO: replace this dumb shit with cond_wait
+    enqueue(Received_Message, __buf, __n);
+    pthread_mutex_unlock(&mutex_recv);
+    pthread_cond_signal(&cond_recv_empty);
     printf("Debug: my_recv lock begins\n");
     pthread_mutex_lock(&mutex_recv);
     while (Send_Message->size == 0)
