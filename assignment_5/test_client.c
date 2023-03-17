@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
 
     my_send(sockfd, buf, strlen(buf) + 1, 0);
     my_recv(sockfd, result, 100, 0);
-    printf("Result: %s", result);
+    printf("Result: %s\n", result);
     my_close(sockfd);
 
     return 0;

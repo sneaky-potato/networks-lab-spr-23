@@ -1,0 +1,149 @@
+# Solution file tree
+.
+├── documentation.txt
+├── Makefile
+├── mysocket.c
+├── mysocket.h
+├── test_client.c
+└── test_server.c
+
+1 directory, 6 files
+
+PART-1
+
+# Data structures used
+
+## Message:
+This contains char array msg and its length msglen
+
+struct Message {
+    char msg[MAX_MESSAGE_SIZE];
+    int msglen;
+};
+
+## BUFFER:
+This is a circular queue allowing enqueue and dequeue 
+head is integer index to head of the queue
+tail is integer index to tail of the queue
+size is integer size of the queue (number of messages currently in the queue)
+
+struct BUFFER {
+    Message **list;
+    int size;
+    int head;
+    int tail;
+};
+
+## BUFFER Send_Message and Received_Message
+
+## pthread_t variables, one each for thread S and thread R
+
+## int global_sockfd, to store the fd of the socket currently in a TCP connection
+
+## int global_flags, set to 0
+
+## mutex locks, one each for Send_Message, Received_Message, and global_sockfd
+
+## condition variables for each of the following:
+- Send_Message is empty
+- Send_Message is full
+- Received_Message is empty
+- Received_Message is full
+
+# Protocol description
+- Before sending the actual message, a prior send call is made to send its length
+
+# Helper Function
+
+int min(int a, int b)
+- returns the smaller of a and b
+
+void init_buffer(BUFFER **buffer)
+- allocates memory for table and initialize size, head, tail
+
+void dealloc_buffer(BUFFER *buffer)
+- frees malloc'ed memory in table
+
+void enqueue(BUFFER *buffer, const char *message, int msglen)
+- creates a Message struct, enqueues it to table
+
+Message *dequeue(BUFFER *buffer)
+- dequeues from table and returns pointer to dequeued message
+
+my_socket(int __domain, int __type, int __protocol):
+- Initialization of the tables
+- Creation of threads R and S
+- Makes a socket call socket(__domain, SOCK_STREAM, __protocol)
+- Throws an error if __type is not SOCK_MyTCP (defined in mysocket.h)
+- If socket call fails, it exits the whole program
+
+my_connect(int __fd, const struct sockaddr *__addr, socklen_t __len):
+- does a connect() call with respective arguments
+- updates global_sockfd to __ of the socket currently on a connection
+- this indirectly initiates the threads to begin their operations using global_sockfd
+
+my_bind() and my_listen():
+- simple wrappers for bind() and listen() respectively
+
+my_accept(int __fd, struct sockaddr *__addr, socklen_t *__restrict __addr_len)
+- calls accept() with repective arguments
+- if successful, updates global_sockfd to return value of accept()
+
+send_routine(): (for thread S)
+- waits for global_sockfd to be set by my_accept() or my_connect()
+- after global_sockfd is set, it waits for the table Send_Message to be non empty
+- acquires the lock on Send_Message, dequeues one Message from the table, releases the lock 
+- send the length of Message by a send call
+- chunks the Message into MAX_CHUNK_SIZE (1000 bytes) and makes a send call for each chunks
+- goes to sleep for SEND_ROUTINE_TIMEOUT and repeats from the first step
+
+receive_routine(): (for thread R)
+- waits for global_sockfd to be set by my_accept() or my_connect()
+- after global_sockfd is set, it waits on a recv call at global_sockfd
+- if recv returns, it reads the message length and proceeds to make the required number of recv calls to collect the entire Message
+- waits for the table Received_Message to be non full
+- acquires the lock on Received_Message, enqueues Message into the table, releases the lock
+- repeats from the first step
+
+my_send(int __fd, void *__buf, size_t __n, int __flags):
+- throws an error if a non-connected socket is passed in arguments
+- waits for the table Send_Message to be non full
+- acquires the lock on Send_Message, enqueues Message into the table, releases the lock
+- always returns __n  
+
+my_recv(int __fd, void *__buf, size_t __n, int __flags):
+- throws an error if a non-connected socket is passed in arguments
+- waits for the table Received_Message to be non empty
+- acquires the lock on Received_Message, dequeues Message from the table, releases the lock
+- it writes the first __n bytes (or less if message is shorter than __n) from the Message into __buf and discards extra bytes if any
+- returns the number of bytes written to __buf 
+
+my_close(int __fd):
+- sets global_sockfd to -1
+- cancels threads R and S
+- deallocates memory
+- calls close(__fd) and returns
+
+PART-2
+
+1. steps involved in my_send(int __fd, const void *__buf, size_t __n, int __flags):
+
+- acquires a lock on Send_Message, does a pthread_cond_wait on the condition that table is full
+- when the table is not full, it enqueues the first __n bytes of __buf into the table as a Message
+- instantly returns __n to main
+- meanwhile thread S which was waiting on empty Send_Message, acquires the lock and dequeues from the table, releasing the lock afterwards
+- S first does a separate send call for Message length, and then makes a send call for each chunk
+- if there were multiple entries in the table, S sends them in every iteration with some timeout
+
+
+2. steps involved in my_recv(int __fd, const void *__buf, size_t __n, int __flags):
+
+- since a connection has been made, thread R is waiting on a recv call at the connected socket
+- when recv returns with length 4 bytes (size of int), R assumes this is the length of an upcoming message
+- assuming that the other side sends the entire message, R receives it in chunks until msglen is reached
+- R acquires the lock on Received_Message, enqueues this message (to be used by my_recv), releasing the lock afterwards
+- In this manner, R goes back to wait on recv and repeatedly enqueues every message received
+- when my_recv is called, it waits for the table to be non-empty
+- if non-empty, lock is acquired and the table is dequeued (lock is released again)
+- the message dequeued is written to __buf upto min(msglen, __n) bytes
+- it returns min(msglen, __n)

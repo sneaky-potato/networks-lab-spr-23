@@ -3,6 +3,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra
 RM = rm -f
 TARGET_LIB = libmsocket.a
+AR = ar
 MAIN = mysocket.c
 
 OBJS = $(MAIN:.c=.o)
