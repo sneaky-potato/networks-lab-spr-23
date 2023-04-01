@@ -17,6 +17,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <ctype.h>
+#include <limits.h>
 
 int main(int argc, char** argv)
 {
@@ -34,7 +35,7 @@ int main(int argc, char** argv)
 
     hostname_or_ip = argv[1];
     n = atoi(argv[2]); if( n<=0 ) { printf("n must be a positive integer"); return EXIT_FAILURE; }
-    T = strtoul((const char*)argv[3], NULL, 10); if ( T<=0 ) { printf("T must be a positive integer"); return EXIT_FAILURE; }
+    T = strtoul((const char*)argv[3], NULL, 10); if ( T<=0 || !T || T == ULONG_MAX) { printf("T must be a positive integer"); return EXIT_FAILURE; }
     // Obtaining IP from hostname (note: handle IP input separately)
     hptr = gethostbyname(hostname_or_ip);
     if(!hptr) { printf("Error in gethostbyname: %s\n", hstrerror(h_errno)); return EXIT_FAILURE; }
@@ -47,11 +48,14 @@ int main(int argc, char** argv)
         printf("%s\n", str);
     }
     printf("n = %d, T = %lu\n", n, T);
+
     // first IP address is used
     ip = hptr->h_addr_list[0];
 
-    // int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
-    // if(sockfd == -1) { perror("ERROR: Socket creation failure"); exit(EXIT_FAILURE); }
+    int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+    if(sockfd == -1) { perror("ERROR: Socket creation failure"); exit(EXIT_FAILURE); }
+
+    
     return 0;
 }
 
