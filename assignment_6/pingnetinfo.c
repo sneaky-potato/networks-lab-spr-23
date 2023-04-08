@@ -37,14 +37,28 @@ void exitHandler(int signum)
     program_exit = 1;
 }
 
-unsigned short checksum(unsigned short *buf, int nwords)
+uint16_t csum(uint16_t *addr, int len)
 {
-    unsigned long sum;
-    for (sum = 0; nwords > 0; nwords--)
+    int nleft = len;
+    uint32_t sum = 0;
+    uint16_t *buf = addr;
+    uint16_t res = 0;
+
+    while (nleft > 1)
+    {
         sum += *buf++;
+        nleft -= 2;
+    }
+    if (nleft == 1)
+    {
+        *(unsigned char *)(&res) = *(unsigned char *)buf;
+        sum += res;
+    }
+
     sum = (sum >> 16) + (sum & 0xffff);
     sum += (sum >> 16);
-    return ~sum;
+    res = ~sum;
+    return res;
 }
 
 int main(int argc, char **argv)
@@ -52,7 +66,7 @@ int main(int argc, char **argv)
     // takes DNS name or IP
     // 1 <= n <= INT_MAX
     // 1 <= T <= LONG_MAX
-    signal(SIGINT, exitHandler);
+    // signal(SIGINT, exitHandler);
 
     char *hostname_or_ip;
     void *ip;
@@ -119,43 +133,50 @@ int main(int argc, char **argv)
     struct icmphdr *icmp_reply;
     struct timeval start, end, diff;
 
-    char packet[PACKET_SIZE];
-    char empty_packet[sizeof(struct icmphdr)];
-
     int seq_num = 0;
     struct sockaddr_in server_addr;
     unsigned int addr_len = sizeof(server_addr);
     double rtt;
 
+    memset((char *)&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    if (inet_pton(AF_INET, ip, &server_addr.sin_addr) < 0)
+    server_addr.sin_port = htons(1025);
+    inet_ntop(hptr->h_addrtype, hptr->h_addr_list[0], str, sizeof(str));
+
+    if (inet_aton(str, &server_addr.sin_addr) < 0)
     {
-        printf("inet_pton");
+        printf("inet_aton");
         return -1;
     }
-
-    icmp_header = (struct icmphdr *)empty_packet;
+    unsigned char *packet = (unsigned char *)malloc(PACKET_SIZE * sizeof(unsigned char));
+    icmp_header = (struct icmphdr *)packet;
 
     icmp_header->type = ICMP_ECHO;
     icmp_header->code = 0;
-    icmp_header->un.echo.sequence = seq_num;
-    icmp_header->checksum = checksum(icmp_header, sizeof(struct icmphdr));
+    icmp_header->un.echo.id = getpid();
+    icmp_header->un.echo.sequence = htons(3);
+    icmp_header->checksum = 0;
+    icmp_header->checksum = csum((uint16_t *)icmp_header, PACKET_SIZE);
 
-    // printf("icmp_header->type = %d\n", icmp_header->type);
-    // printf("icmp_header->checksum = %d\n", icmp_header->checksum);
-    // printf("icmp_header->code = %d\n", icmp_header->code);
-    // printf("icmp_header->un.echo.sequence = %d\n", icmp_header->un.echo.sequence);
+    printf("icmp_header->type = %d\n", icmp_header->type);
+    printf("icmp_header->code = %d\n", icmp_header->code);
+    printf("icmp_header->un.echo.sequence = %d\n", icmp_header->un.echo.sequence);
+    printf("icmp_header->checksum = %d\n", icmp_header->checksum);
 
     gettimeofday(&start, NULL);
 
     int status;
-    if ((status = sendto(sockfd, icmp_header, sizeof(struct icmphdr), 0, (struct sockaddr *)&server_addr, addr_len)) < 0)
+    if ((status = sendto(sockfd, packet, PACKET_SIZE, 0, (struct sockaddr *)&server_addr, addr_len)) < 0)
     {
+        perror("sendto");
         printf("sendto");
         return -1;
     }
+    printf("waiting for reply\n");
 
-    if ((status = recvfrom(sockfd, packet, sizeof(packet), 0, (struct sockaddr *)&server_addr, &addr_len)) < 0)
+    unsigned char *reply = (unsigned char *)malloc(PACKET_SIZE * sizeof(unsigned char));
+
+    if ((status = recvfrom(sockfd, reply, PACKET_SIZE, 0, (struct sockaddr *)&server_addr, &addr_len)) < 0)
     {
         printf("recvfrom");
         return -1;
@@ -163,17 +184,17 @@ int main(int argc, char **argv)
 
     gettimeofday(&end, NULL);
 
-    struct iphdr *ip_header = (struct iphdr *)packet;
+    struct iphdr *ip_header = (struct iphdr *)reply;
     int ip_header_len = ip_header->ihl * 4;
 
-    icmp_reply = (struct icmphdr *)(packet + ip_header_len);
+    icmp_reply = (struct icmphdr *)(reply + ip_header_len);
 
-    printf("icmp_header->type = %d\n", icmp_header->type);
-    printf("icmp_header->checksum = %d\n", icmp_header->checksum);
-    printf("icmp_header->code = %d\n", icmp_header->code);
-    printf("icmp_header->un.echo.sequence = %d\n", icmp_header->un.echo.sequence);
+    printf("icmp_reply->type = %d\n", icmp_reply->type);
+    printf("icmp_reply->checksum = %d\n", icmp_reply->checksum);
+    printf("icmp_reply->code = %d\n", icmp_reply->code);
+    printf("icmp_reply->un.echo.sequence = %d\n", icmp_reply->un.echo.sequence);
 
-    if (icmp_header->type == ICMP_ECHOREPLY)
+    if (icmp_reply->type == ICMP_ECHOREPLY)
     {
         printf("Received ICMP ECHO REPLY\n");
         timersub(&end, &start, &diff);
@@ -183,7 +204,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        printf("Received ICMP ECHO REPLY: %d\n", icmp_header->type);
+        printf("Received ICMP ECHO REPLY: %d\n", icmp_reply->type);
     }
 
     close(sockfd);
