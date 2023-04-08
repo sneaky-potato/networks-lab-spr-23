@@ -308,6 +308,8 @@ int main(int argc, char **argv)
         }
 
         double bandwidth = 0;
+        double latency = 0;
+
         for (int i = 0; i < n; i++)
         {
             for (int j = 0; j < MAX_NO_DATA_SIZES; j++)
@@ -344,19 +346,26 @@ int main(int argc, char **argv)
                 rtt = (double)diff.tv_sec * 1000.0 + (double)diff.tv_usec / 1000.0;
                 printf("DEBUG: %lf\n", rtt);
                 curr_rtt[j] = rtt;
+                if (j == 0)
+                    latency += rtt / 2;
+
                 sleep(1);
             }
 
-            bandwidth += (2.0 * (data_sizes[1] - data_sizes[0])) / (curr_rtt[1] - prev_rtt[1] - curr_rtt[0] + prev_rtt[0]);
-            printf("bandwidth: %lf Bps\n", bandwidth);
-            // prev_rtt = curr_rtt;
+            double temp = (2.0 * (data_sizes[1] - data_sizes[0])) / (curr_rtt[1] - prev_rtt[1] - curr_rtt[0] + prev_rtt[0]);
+            printf("bandwidth: %lf Bps\n", temp);
+            bandwidth += temp;
+
             for (int i = 0; i < MAX_NO_DATA_SIZES; i++)
                 prev_rtt[i] = curr_rtt[i];
 
             sleep(T);
         }
         bandwidth /= n;
+        latency /= n;
+
         printf("avg bandwidth: %lf Bps\n", bandwidth);
+        printf("avg latency: %lf ms\n", latency);
         bandwidth = 0;
 
         printf("rtt: %f\n\n", min_rrt);
