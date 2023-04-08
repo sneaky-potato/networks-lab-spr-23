@@ -23,11 +23,14 @@
 #include <netinet/ip_icmp.h>
 #include <sys/time.h>
 #include <signal.h>
+#include <errno.h>
+#include <ifaddrs.h>
 
 #define PACKET_SIZE 64
 #define MAX_NO_PACKETS 5
 #define MAX_NO_HOPS 30
-#define RECV_TIMEOUT 1
+#define RECV_TIMEOUT 10
+#define MAX_NO_DATA_SIZES 2
 
 int program_exit;
 
@@ -63,19 +66,83 @@ uint16_t csum(uint16_t *addr, int len)
     return res;
 }
 
+void set_ip_header(struct iphdr *ip_header, char *dest, int ttl, int packet_size)
+{
+    ip_header->ihl = 5;
+    ip_header->version = 4;
+    ip_header->tos = 0;
+    ip_header->tot_len = packet_size;
+    ip_header->id = htons(0);
+    ip_header->frag_off = 0;
+    ip_header->ttl = ttl;
+    ip_header->protocol = IPPROTO_ICMP;
+    ip_header->check = 0;
+
+    struct ifaddrs *ifaddr, *ifa;
+    int family, s;
+    char host[INET_ADDRSTRLEN];
+    if (getifaddrs(&ifaddr) == -1)
+    {
+        perror("getifaddrs");
+        exit(EXIT_FAILURE);
+    }
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next)
+    {
+        if (ifa->ifa_addr == NULL)
+            continue;
+        family = ifa->ifa_addr->sa_family;
+        if (family == AF_INET)
+        {
+            s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in), host, INET_ADDRSTRLEN, NULL, 0, NI_NUMERICHOST);
+            if (s != 0)
+            {
+                printf("getnameinfo() failed: %s", gai_strerror(s));
+                exit(EXIT_FAILURE);
+            }
+            if (strcmp(ifa->ifa_name, "eth0") == 0)
+            {
+                break;
+            }
+        }
+    }
+    freeifaddrs(ifaddr);
+
+    ip_header->saddr = inet_addr(host); // source IP address
+    ip_header->daddr = inet_addr(dest); // destination IP address
+}
+
+void set_icmp_header(struct icmphdr *icmp_header)
+{
+    icmp_header->type = ICMP_ECHO;
+    icmp_header->code = 0;
+    icmp_header->un.echo.id = getpid();
+    icmp_header->un.echo.sequence = 0;
+    icmp_header->checksum = 0;
+    icmp_header->checksum = csum((uint16_t *)icmp_header, PACKET_SIZE - sizeof(struct iphdr));
+}
+
 int main(int argc, char **argv)
 {
     // takes DNS name or IP
     // 1 <= n <= INT_MAX
     // 1 <= T <= LONG_MAX
     // signal(SIGINT, exitHandler);
-
     char *hostname_or_ip;
     void *ip;
     char str[INET_ADDRSTRLEN];
     struct hostent *hptr;
     int n;
     unsigned long T;
+
+    int *data_sizes = (int *)malloc(MAX_NO_DATA_SIZES * sizeof(int));
+    data_sizes[0] = 0;
+    data_sizes[1] = 16;
+
+    double *prev_rtt = (double *)malloc(MAX_NO_DATA_SIZES * sizeof(double));
+    for (int i = 0; i < MAX_NO_DATA_SIZES; i++)
+        prev_rtt[i] = 0;
+    double *curr_rtt = (double *)malloc(MAX_NO_DATA_SIZES * sizeof(double));
+
     // Input validation
     if (argc < 4)
     {
@@ -131,6 +198,7 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
+    struct iphdr *ip_header;
     struct icmphdr *icmp_header;
     struct icmphdr *icmp_reply;
     struct timeval start, end, diff;
@@ -142,7 +210,7 @@ int main(int argc, char **argv)
 
     memset((char *)&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(1025);
+
     inet_ntop(hptr->h_addrtype, hptr->h_addr_list[0], str, sizeof(str));
 
     if (inet_aton(str, &server_addr.sin_addr) < 0)
@@ -161,8 +229,15 @@ int main(int argc, char **argv)
 
     unsigned char *packet = (unsigned char *)malloc(PACKET_SIZE * sizeof(unsigned char));
 
-    for (ttl = 1; ttl < MAX_NO_HOPS; ttl++)
+    int reached = 0;
+    for (ttl = 1; ttl < MAX_NO_HOPS && !reached; ttl++)
     {
+        const int on = 1;
+        if ((status = setsockopt(sockfd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on))) < 0)
+        {
+            printf("setsockopt IP_HDRINCL");
+            exit(EXIT_FAILURE);
+        }
         if ((status = setsockopt(sockfd, SOL_IP, IP_TTL, &ttl, sizeof(ttl))) < 0)
         {
             printf("setsockopt ttl");
@@ -177,17 +252,14 @@ int main(int argc, char **argv)
 
         double min_rrt = INT_MAX;
 
-        for (int seq = 0; seq < MAX_NO_PACKETS; seq++)
+        for (int seq = 0; seq < MAX_NO_PACKETS && !reached; seq++)
         {
             memset(packet, 0, PACKET_SIZE);
-            icmp_header = (struct icmphdr *)packet;
+            ip_header = (struct iphdr *)packet;
+            set_ip_header(ip_header, str, ttl, PACKET_SIZE);
 
-            icmp_header->type = ICMP_ECHO;
-            icmp_header->code = 0;
-            icmp_header->un.echo.id = getpid();
-            icmp_header->un.echo.sequence = htons(seq);
-            icmp_header->checksum = 0;
-            icmp_header->checksum = csum((uint16_t *)icmp_header, PACKET_SIZE);
+            icmp_header = (struct icmphdr *)(packet + ip_header->ihl * 4);
+            set_icmp_header(icmp_header);
 
             gettimeofday(&start, NULL);
             if ((status = sendto(sockfd, packet, PACKET_SIZE, 0, (struct sockaddr *)&server_addr, addr_len)) < 0)
@@ -225,6 +297,7 @@ int main(int argc, char **argv)
             else if (icmp_reply->type == ICMP_ECHOREPLY)
             {
                 printf("%d: %s\n", seq, inet_ntoa(server_addr.sin_addr));
+                reached = 1;
                 break;
             }
             else
@@ -233,7 +306,60 @@ int main(int argc, char **argv)
             }
             sleep(1);
         }
-        printf("rrt: %f\n\n", min_rrt);
+
+        double bandwidth = 0;
+        for (int i = 0; i < n; i++)
+        {
+            for (int j = 0; j < MAX_NO_DATA_SIZES; j++)
+            {
+                memset(packet, 0, PACKET_SIZE);
+                ip_header = (struct iphdr *)packet;
+                set_ip_header(ip_header, str, ttl, sizeof(struct iphdr) + sizeof(struct icmphdr) + data_sizes[j]);
+
+                icmp_header = (struct icmphdr *)(packet + ip_header->ihl * 4);
+                set_icmp_header(icmp_header);
+
+                gettimeofday(&start, NULL);
+                if ((status = sendto(sockfd, packet, ip_header->tot_len, 0, (struct sockaddr *)&server_addr, addr_len)) < 0)
+                {
+                    printf("sendto");
+                    return -1;
+                }
+                unsigned char *reply = (unsigned char *)malloc(PACKET_SIZE * sizeof(unsigned char));
+
+                if ((status = recvfrom(sockfd, reply, ip_header->tot_len, 0, (struct sockaddr *)&server_addr, &addr_len)) < 0)
+                {
+                    printf("recvfrom");
+                    return -1;
+                }
+
+                gettimeofday(&end, NULL);
+
+                struct iphdr *ip_header = (struct iphdr *)reply;
+                int ip_header_len = ip_header->ihl * 4;
+
+                icmp_reply = (struct icmphdr *)(reply + ip_header_len);
+
+                timersub(&end, &start, &diff);
+                rtt = (double)diff.tv_sec * 1000.0 + (double)diff.tv_usec / 1000.0;
+                printf("DEBUG: %lf\n", rtt);
+                curr_rtt[j] = rtt;
+                sleep(1);
+            }
+
+            bandwidth += (2.0 * (data_sizes[1] - data_sizes[0])) / (curr_rtt[1] - prev_rtt[1] - curr_rtt[0] + prev_rtt[0]);
+            printf("bandwidth: %lf Bps\n", bandwidth);
+            // prev_rtt = curr_rtt;
+            for (int i = 0; i < MAX_NO_DATA_SIZES; i++)
+                prev_rtt[i] = curr_rtt[i];
+
+            sleep(T);
+        }
+        bandwidth /= n;
+        printf("avg bandwidth: %lf Bps\n", bandwidth);
+        bandwidth = 0;
+
+        printf("rtt: %f\n\n", min_rrt);
     }
 
     close(sockfd);
