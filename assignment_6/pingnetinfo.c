@@ -26,6 +26,8 @@
 
 #define PACKET_SIZE 64
 #define MAX_NO_PACKETS 5
+#define MAX_NO_HOPS 30
+#define RECV_TIMEOUT 1
 
 int program_exit;
 
@@ -148,63 +150,90 @@ int main(int argc, char **argv)
         printf("inet_aton");
         return -1;
     }
-    unsigned char *packet = (unsigned char *)malloc(PACKET_SIZE * sizeof(unsigned char));
-    icmp_header = (struct icmphdr *)packet;
-
-    icmp_header->type = ICMP_ECHO;
-    icmp_header->code = 0;
-    icmp_header->un.echo.id = getpid();
-    icmp_header->un.echo.sequence = htons(3);
-    icmp_header->checksum = 0;
-    icmp_header->checksum = csum((uint16_t *)icmp_header, PACKET_SIZE);
-
-    printf("icmp_header->type = %d\n", icmp_header->type);
-    printf("icmp_header->code = %d\n", icmp_header->code);
-    printf("icmp_header->un.echo.sequence = %d\n", icmp_header->un.echo.sequence);
-    printf("icmp_header->checksum = %d\n", icmp_header->checksum);
-
-    gettimeofday(&start, NULL);
 
     int status;
-    if ((status = sendto(sockfd, packet, PACKET_SIZE, 0, (struct sockaddr *)&server_addr, addr_len)) < 0)
+    int err;
+
+    struct timeval recv_timeout;
+    recv_timeout.tv_sec = RECV_TIMEOUT;
+    recv_timeout.tv_usec = 0;
+    int ttl;
+
+    unsigned char *packet = (unsigned char *)malloc(PACKET_SIZE * sizeof(unsigned char));
+
+    for (ttl = 1; ttl < MAX_NO_HOPS; ttl++)
     {
-        perror("sendto");
-        printf("sendto");
-        return -1;
-    }
-    printf("waiting for reply\n");
+        if ((status = setsockopt(sockfd, SOL_IP, IP_TTL, &ttl, sizeof(ttl))) < 0)
+        {
+            printf("setsockopt ttl");
+            exit(EXIT_FAILURE);
+        }
 
-    unsigned char *reply = (unsigned char *)malloc(PACKET_SIZE * sizeof(unsigned char));
+        if ((err = setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&recv_timeout, sizeof(recv_timeout))) < 0)
+        {
+            printf("setsockopt recv timeout");
+            exit(EXIT_FAILURE);
+        }
 
-    if ((status = recvfrom(sockfd, reply, PACKET_SIZE, 0, (struct sockaddr *)&server_addr, &addr_len)) < 0)
-    {
-        printf("recvfrom");
-        return -1;
-    }
+        double min_rrt = INT_MAX;
 
-    gettimeofday(&end, NULL);
+        for (int seq = 0; seq < MAX_NO_PACKETS; seq++)
+        {
+            memset(packet, 0, PACKET_SIZE);
+            icmp_header = (struct icmphdr *)packet;
 
-    struct iphdr *ip_header = (struct iphdr *)reply;
-    int ip_header_len = ip_header->ihl * 4;
+            icmp_header->type = ICMP_ECHO;
+            icmp_header->code = 0;
+            icmp_header->un.echo.id = getpid();
+            icmp_header->un.echo.sequence = htons(seq);
+            icmp_header->checksum = 0;
+            icmp_header->checksum = csum((uint16_t *)icmp_header, PACKET_SIZE);
 
-    icmp_reply = (struct icmphdr *)(reply + ip_header_len);
+            gettimeofday(&start, NULL);
+            if ((status = sendto(sockfd, packet, PACKET_SIZE, 0, (struct sockaddr *)&server_addr, addr_len)) < 0)
+            {
+                printf("sendto");
+                return -1;
+            }
+            unsigned char *reply = (unsigned char *)malloc(PACKET_SIZE * sizeof(unsigned char));
 
-    printf("icmp_reply->type = %d\n", icmp_reply->type);
-    printf("icmp_reply->checksum = %d\n", icmp_reply->checksum);
-    printf("icmp_reply->code = %d\n", icmp_reply->code);
-    printf("icmp_reply->un.echo.sequence = %d\n", icmp_reply->un.echo.sequence);
+            if ((status = recvfrom(sockfd, reply, PACKET_SIZE, 0, (struct sockaddr *)&server_addr, &addr_len)) < 0)
+            {
+                printf("recvfrom");
+                return -1;
+            }
 
-    if (icmp_reply->type == ICMP_ECHOREPLY)
-    {
-        printf("Received ICMP ECHO REPLY\n");
-        timersub(&end, &start, &diff);
-        rtt = (double)diff.tv_sec * 1000.0 + (double)diff.tv_usec / 1000.0;
+            gettimeofday(&end, NULL);
 
-        printf("Received ping response from %s: seq_num=%d rtt=%.3fms\n", argv[1], seq_num, rtt);
-    }
-    else
-    {
-        printf("Received ICMP ECHO REPLY: %d\n", icmp_reply->type);
+            struct iphdr *ip_header = (struct iphdr *)reply;
+            int ip_header_len = ip_header->ihl * 4;
+
+            icmp_reply = (struct icmphdr *)(reply + ip_header_len);
+
+            timersub(&end, &start, &diff);
+            rtt = (double)diff.tv_sec * 1000.0 + (double)diff.tv_usec / 1000.0;
+
+            if (rtt < min_rrt)
+                min_rrt = rtt;
+
+            if (icmp_reply->type == ICMP_TIME_EXCEEDED)
+            {
+                struct in_addr ip_addr;
+                ip_addr.s_addr = ip_header->saddr;
+                printf("%d: %s\n", seq, inet_ntoa(server_addr.sin_addr));
+            }
+            else if (icmp_reply->type == ICMP_ECHOREPLY)
+            {
+                printf("%d: %s\n", seq, inet_ntoa(server_addr.sin_addr));
+                break;
+            }
+            else
+            {
+                printf("* * * *\n");
+            }
+            sleep(1);
+        }
+        printf("rrt: %f\n\n", min_rrt);
     }
 
     close(sockfd);
