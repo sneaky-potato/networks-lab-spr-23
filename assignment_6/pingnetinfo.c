@@ -25,6 +25,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <ifaddrs.h>
+#include <math.h>
 
 #define PACKET_SIZE 64
 #define MAX_NO_PACKETS 5
@@ -33,6 +34,7 @@
 #define MAX_NO_DATA_SIZES 2
 
 int program_exit;
+int alarmset = 0;
 
 // idea behind this handler:
 // send ICMP packets in a loop until program_exit is set to 1
@@ -99,16 +101,46 @@ void set_ip_header(struct iphdr *ip_header, char *dest, int ttl, int packet_size
                 printf("getnameinfo() failed: %s", gai_strerror(s));
                 exit(EXIT_FAILURE);
             }
-            if (strcmp(ifa->ifa_name, "eth0") == 0)
-            {
-                break;
-            }
         }
     }
     freeifaddrs(ifaddr);
 
     ip_header->saddr = inet_addr(host); // source IP address
     ip_header->daddr = inet_addr(dest); // destination IP address
+}
+
+void sig_alrm(int signo)
+{
+    alarmset = 1;
+}
+
+void printtofile(FILE *fpi, struct icmphdr *icp)
+{
+    FILE *fp = fopen("ping.log", "a");
+    if (icp->type == ICMP_ECHO)
+    {
+        fprintf(fp, "ECHO REQUEST PACKET:\n");
+    }
+    else if (icp->type == ICMP_ECHOREPLY)
+    {
+        fprintf(fp, "ECHO REPLY PACKET:\n");
+    }
+    else if (icp->type == ICMP_EXC_TTL)
+    {
+        fprintf(fp, "TIME EXCEEDED PACKET:\n");
+    }
+    else
+    {
+        fprintf(fp, "UNKOWN PACKET:\n");
+    }
+
+    fprintf(fp, "TYPE: %d\n", icp->type);
+    fprintf(fp, "CODE: %d\n", icp->code);
+    fprintf(fp, "CHECKSUM: %d\n", icp->checksum);
+    fprintf(fp, "IDENTIFIER: %d\n", icp->un.echo.id);
+    fprintf(fp, "SEQUENCE: %d\n", icp->un.echo.sequence);
+    fprintf(fp, "\n");
+    fclose(fp);
 }
 
 void set_icmp_header(struct icmphdr *icmp_header)
@@ -127,12 +159,16 @@ int main(int argc, char **argv)
     // 1 <= n <= INT_MAX
     // 1 <= T <= LONG_MAX
     // signal(SIGINT, exitHandler);
+    signal(SIGALRM, sig_alrm);
     char *hostname_or_ip;
     void *ip;
     char str[INET_ADDRSTRLEN];
     struct hostent *hptr;
     int n;
     unsigned long T;
+
+    FILE *fp = fopen("ping.log", "a");
+    printf("logging icmp packets in ping.log file\n");
 
     int *data_sizes = (int *)malloc(MAX_NO_DATA_SIZES * sizeof(int));
     data_sizes[0] = 0;
@@ -252,6 +288,8 @@ int main(int argc, char **argv)
 
         double min_rrt = INT_MAX;
 
+        printf("discovering router\n");
+
         for (int seq = 0; seq < MAX_NO_PACKETS && !reached; seq++)
         {
             memset(packet, 0, PACKET_SIZE);
@@ -260,6 +298,7 @@ int main(int argc, char **argv)
 
             icmp_header = (struct icmphdr *)(packet + ip_header->ihl * 4);
             set_icmp_header(icmp_header);
+            printtofile(fp, icmp_header);
 
             gettimeofday(&start, NULL);
             if ((status = sendto(sockfd, packet, PACKET_SIZE, 0, (struct sockaddr *)&server_addr, addr_len)) < 0)
@@ -271,8 +310,8 @@ int main(int argc, char **argv)
 
             if ((status = recvfrom(sockfd, reply, PACKET_SIZE, 0, (struct sockaddr *)&server_addr, &addr_len)) < 0)
             {
-                printf("recvfrom");
-                return -1;
+                printf("* * * *");
+                // return -1;
             }
 
             gettimeofday(&end, NULL);
@@ -281,6 +320,7 @@ int main(int argc, char **argv)
             int ip_header_len = ip_header->ihl * 4;
 
             icmp_reply = (struct icmphdr *)(reply + ip_header_len);
+            printtofile(fp, icmp_reply);
 
             timersub(&end, &start, &diff);
             rtt = (double)diff.tv_sec * 1000.0 + (double)diff.tv_usec / 1000.0;
@@ -307,8 +347,12 @@ int main(int argc, char **argv)
             sleep(1);
         }
 
+        printf("router found, testing for latency and bandwidth\n");
+
         double bandwidth = 0;
         double latency = 0;
+
+        printf("sending %d packets of different sizes\n\n", n);
 
         for (int i = 0; i < n; i++)
         {
@@ -320,6 +364,7 @@ int main(int argc, char **argv)
 
                 icmp_header = (struct icmphdr *)(packet + ip_header->ihl * 4);
                 set_icmp_header(icmp_header);
+                printtofile(fp, icmp_header);
 
                 gettimeofday(&start, NULL);
                 if ((status = sendto(sockfd, packet, ip_header->tot_len, 0, (struct sockaddr *)&server_addr, addr_len)) < 0)
@@ -341,10 +386,10 @@ int main(int argc, char **argv)
                 int ip_header_len = ip_header->ihl * 4;
 
                 icmp_reply = (struct icmphdr *)(reply + ip_header_len);
-
+                printtofile(fp, icmp_reply);
                 timersub(&end, &start, &diff);
                 rtt = (double)diff.tv_sec * 1000.0 + (double)diff.tv_usec / 1000.0;
-                printf("DEBUG: %lf\n", rtt);
+                // printf("DEBUG: %lf\n", rtt);
                 curr_rtt[j] = rtt;
                 if (j == 0)
                     latency += rtt / 2;
@@ -353,18 +398,19 @@ int main(int argc, char **argv)
             }
 
             double temp = (2.0 * (data_sizes[1] - data_sizes[0])) / (curr_rtt[1] - prev_rtt[1] - curr_rtt[0] + prev_rtt[0]);
-            printf("bandwidth: %lf Bps\n", temp);
+            double posttemp = fabs(temp);
+            printf("bandwidth: %lf Bps\n", posttemp);
             bandwidth += temp;
 
             for (int i = 0; i < MAX_NO_DATA_SIZES; i++)
-                prev_rtt[i] = curr_rtt[i];
+                prev_rtt[i] += curr_rtt[i];
 
             sleep(T);
         }
         bandwidth /= n;
         latency /= n;
-
-        printf("avg bandwidth: %lf Bps\n", bandwidth);
+        double posbandwidth = fabs(bandwidth);
+        printf("avg bandwidth: %lf Bps\n", posbandwidth);
         printf("avg latency: %lf ms\n", latency);
         bandwidth = 0;
 
@@ -374,6 +420,7 @@ int main(int argc, char **argv)
     close(sockfd);
 
     // print statistics
+    fclose(fp);
 
     return 0;
 }
